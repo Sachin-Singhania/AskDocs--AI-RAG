@@ -15,7 +15,6 @@ export const authOptions = {
   secret: process.env.JWT_SECRET || "secret",
   callbacks: {
     async jwt({ token,user }:any) {
-      console.log("JWT Callback", { token, user });
       if(user){
         const exsistingUser = await prisma.user.findUnique({
           where: { email: user.email },
@@ -35,7 +34,6 @@ export const authOptions = {
       return token
     },
     async session({ session, token }:any) {
-      console.log("Session Callback", { session, token });
        session.user = {
                 name: token.name,
                 email: token.email,

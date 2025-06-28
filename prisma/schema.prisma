@@ -38,7 +38,14 @@ model Chat {
   updatedAt   DateTime @updatedAt
   limit      Int?      @default(5)
   collectionName String
+  status status @default(WAITING)
   @@index([id,userId])
+}
+enum status {
+  WAITING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 model URL {
   id          String   @id @default(uuid())

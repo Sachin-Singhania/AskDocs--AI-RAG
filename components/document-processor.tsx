@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Upload, Globe, Loader2 } from "lucide-react"
+import { processFile, processUrl } from "@/lib/actions/file"
 
 interface DocumentProcessorProps {
   documentType: "pdf" | "url" | null
@@ -18,12 +19,33 @@ export function DocumentProcessor({ documentType, onDocumentProcessed }: Documen
   const [url, setUrl] = useState("")
   const [file, setFile] = useState<File | null>(null)
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
     if (selectedFile && selectedFile.type === "application/pdf") {
       setFile(selectedFile)
     }
   }
+  const handleURLUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const inputUrl = event.target.value;
+    setUrl(inputUrl)
+  }
+  const handleProcessClick = async () => {
+  setIsProcessing(true);
+  try {
+    if (documentType === "pdf" && file) {
+      const res = await processFile(file);
+      console.log("File processing result:", res);
+    } 
+    else if (documentType === "url" && url) {
+      const res = await processUrl(url);
+      console.log("URL processing result:", res);
+    }
+  } catch (error) {
+    console.error("Error processing document:", error);
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   if (!documentType) {
     return (
@@ -73,13 +95,14 @@ export function DocumentProcessor({ documentType, onDocumentProcessed }: Documen
               type="url"
               placeholder="https://example.com/article"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={handleURLUpload}
             />
           )}
 
           <Button
-            disabled={isProcessing || (!file && !url)}
+            disabled={isProcessing || (documentType === "pdf" && !file) || (documentType === "url" && !url)}
             className="w-full bg-blue-600 text-white hover:bg-blue-700"
+            onClick={handleProcessClick}
           >
             {isProcessing ? (
               <>
