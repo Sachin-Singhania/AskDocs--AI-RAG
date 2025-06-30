@@ -11,10 +11,9 @@ import { processFile, processUrl } from "@/lib/actions/file"
 
 interface DocumentProcessorProps {
   documentType: "pdf" | "url" | null
-  onDocumentProcessed: (id: string, title: string) => void
 }
 
-export function DocumentProcessor({ documentType, onDocumentProcessed }: DocumentProcessorProps) {
+export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [url, setUrl] = useState("")
   const [file, setFile] = useState<File | null>(null)

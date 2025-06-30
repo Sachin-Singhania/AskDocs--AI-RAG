@@ -46,7 +46,7 @@ export default function RAGChat() {
 
       <div className="flex-1 flex flex-col">
         {!isDocumentProcessed ? (
-          <DocumentProcessor documentType={documentType} onDocumentProcessed={handleDocumentProcessed} />
+          <DocumentProcessor documentType={documentType} />
         ) : (
           <ChatInterface documentId={documentId!} documentTitle={documentTitle} />
         )}

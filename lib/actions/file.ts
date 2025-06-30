@@ -2,6 +2,9 @@
 import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from "@aws-sdk/client-s3";
 import redis from '@/lib/redis';
 import { v4 as uuidv4 } from 'uuid';
+import { prisma } from "../prisma";
+import { useSession } from "next-auth/react";
+import { CreateTopic } from "./rag-pipeline";
 
 /**
  * Upload buffer to S3
@@ -22,10 +25,10 @@ async function UploadToS3(
       forcePathStyle: true
     });
 
-    await ensureBucketExists(s3, "rag-chat-bucket");
+    await ensureBucketExists(s3, process.env.S3_BUCKET as string);
 
     const params = {
-      Bucket: "rag-chat-bucket",
+      Bucket: process.env.S3_BUCKET,
       Key: key,
       Body: buffer,
       ContentType: contentType,
@@ -39,7 +42,7 @@ async function UploadToS3(
 
   } catch (error) {
     console.error("Error uploading to S3:", error);
-    return undefined;
+    throw new Error("Failed to upload file to S3: " + error);
   }
 }
 
@@ -57,37 +60,35 @@ async function UploadToRedis(
   }
 }
 
-/**
- * Main file processing function
- */
 export async function processFile(
   file: File
-): Promise<{ status: string; message: string }> {
+): Promise<{ status: string; message: string }> { 
   try {
     if (!file) {
       console.error("No file provided");
       return { status: "error", message: "No file provided" };
     }
+    const userId = await checkLimit();
     const nameParts = file.name.split('.');
+    const topic= await CreateTopic(file.name);
+    const chat= await prisma.chat.create({
+      data: {
+        status: "WAITING",
+        topic:topic? topic: nameParts[0],type: "PDF",userId,
+      },
+    })
     const extension = nameParts[nameParts.length-1] || 'bin';
     const key = `${uuidv4()}.${extension}`;
 
     const arrayBuffer = await file.arrayBuffer();
-    if (!arrayBuffer) {
-      console.error("Could not read file data");
-      return { status: "error", message: "Could not read file data" };
-    }
+    
 
     const nodeBuffer = Buffer.from(arrayBuffer);
-    if (!nodeBuffer || !nodeBuffer.length) {
-      console.error("Buffer conversion failed");
-      return { status: "error", message: "Buffer conversion failed" };
-    }
+   
 
     const s3Path = await UploadToS3(nodeBuffer, key, file.type || `application/${extension}`);
     if (!s3Path) {
-      console.error("S3 upload failed");
-      return { status: "error", message: "Failed to upload to S3" };
+      throw new Error("Failed to upload file to S3");
     }
 
     console.log("File uploaded to S3:", s3Path);
@@ -97,6 +98,7 @@ export async function processFile(
       path: s3Path,
       type: "pdf",
       key,
+      chatId: chat.id,
     };
 
     const redisResult = await UploadToRedis(fileMetadata);
@@ -120,7 +122,6 @@ export async function processFile(
     };
   }
 }
-
 async function ensureBucketExists(s3: S3Client, bucketName: string) {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucketName }));
@@ -136,7 +137,6 @@ async function ensureBucketExists(s3: S3Client, bucketName: string) {
     }
   }
 }
-
 export async function processUrl(
   url: string
 ): Promise<{ status: string; message: string }> {
@@ -145,15 +145,44 @@ export async function processUrl(
       console.error("No URL provided");
       return { status: "error", message: "No URL provided" };
     }
-
-    const metadata : URLMetadata = {
+    const userId= await checkLimit();
+    const uri= new URL(url);
+    const hostname= uri.hostname.split(".");
+    hostname.pop();
+    let final= hostname.join(".")
+    const {message,status,collectionName}=await checkIfURLExsists(uri.origin);
+    const topic= await CreateTopic(uri.origin);
+    if (status) {
+      console.log(message);
+      const chat= await prisma.chat.create({
+      data: {
+        status: "COMPLETED",collectionName,
+        topic:topic ? topic : final,type: "URL",userId,
+      },
+    })
+     return {
+      status: "success",
+      message: "URL processed successfully",
+    };
+    }
+    
+    
+    const chat= await prisma.chat.create({
+      data: {
+        status: "WAITING",
+        topic: "",type: "URL",userId,
+      },
+    })
+   const metadata : URLMetadata = {
          url,
         type: "url",
+        chatId: chat.id,
         };
+        
     const redisResult = await UploadToRedis(metadata);
     if (!redisResult) {
       console.error("Redis upload failed");
-      return { status: "error", message: "Failed to queue URL metadata in Redis" };
+      throw new Error("Failed to queue URL metadata in Redis");
     }
     console.log("URL metadata uploaded to Redis");
     return {
@@ -169,5 +198,83 @@ export async function processUrl(
     };
     }   
 }
-type FileMetadata = { name: string; path: string; type: string; key: string }
-type URLMetadata = { url: string; type: "url" }
+async function checkIfURLExsists(url: string) {
+  try {
+    const urlCreate=await prisma.uRL.findFirst({
+          where:{
+            url,
+          },select:{
+            collectionName: true,
+          }
+        });
+    if (urlCreate) {
+      console.error("URL already exists in the database");
+      return {
+        status: true,
+        message: "URL already exists in the database",
+        collectionName: urlCreate.collectionName,
+      }
+    }else{
+      console.log("URL does not exist in the database");
+      return {
+        status: false,
+        message: "URL does not exist in the database",
+      }
+    }
+  } catch (error) {
+    throw new Error("Error checking URL existence in the database: " + error);
+  }
+}
+async function checkLimit() {
+  try {
+    const email = useSession().data?.user?.email;
+    if (!email) {
+      throw new Error("User email not found in session");
+    }
+
+    const user= await prisma.user.findUnique({
+      where: { email },
+      select:{
+        limit: true,
+        id: true,
+      }
+    });
+    if (!user) {
+    console.error("User not found in database");
+    throw new Error("User not found in database");
+  }
+  if (user.limit && user.limit <= 0) {
+    console.error("User has reached their limit");
+    throw new Error("User has reached their limit");
+  }
+    await prisma.user.update({
+      where: { email },
+      data: {
+        limit: {
+          decrement: 1,
+        },
+      },
+    });
+    console.log("User limit decremented successfully");
+    return user.id;
+  } catch (error) {
+    console.error("Error checking user limit:", error);
+    throw new Error("Error checking user limit: " + error);
+  }
+}
+
+
+
+async function uploadMessage(message:UPLOADMESSAGE){
+  try {
+    await prisma.message.create({
+      data:{
+        content : message.message,
+        Sender: message.role,
+        chatId:message.chatId,
+      }
+    })
+  } catch (error) {
+     console.error("Error uploading message:", error);
+  }
+}
