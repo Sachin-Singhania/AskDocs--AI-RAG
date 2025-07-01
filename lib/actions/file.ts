@@ -265,16 +265,3 @@ async function checkLimit() {
 
 
 
-async function uploadMessage(message:UPLOADMESSAGE){
-  try {
-    await prisma.message.create({
-      data:{
-        content : message.message,
-        Sender: message.role,
-        chatId:message.chatId,
-      }
-    })
-  } catch (error) {
-     console.error("Error uploading message:", error);
-  }
-}

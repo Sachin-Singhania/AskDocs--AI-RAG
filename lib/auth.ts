@@ -15,23 +15,38 @@ export const authOptions = {
   secret: process.env.JWT_SECRET || "secret",
   callbacks: {
     async jwt({ token,user }:any) {
-      if(user){
-        const exsistingUser = await prisma.user.findUnique({
-          where: { email: user.email },
-        });
-        if (!exsistingUser) {
-          await prisma.user.create({
-            data: {
-              name: token.name ,
-              email: token.email ,googleID: token.sub,tokenExpiry : token.exp,
-            },
+      try {
+        if(user){
+          const exsistingUser = await prisma.user.findUnique({
+            where: { email: user.email },
           });
+          let userId;
+          if (!exsistingUser) {
+            const newUser =await prisma.user.create({
+              data: {
+                name: token.name ,
+                email: token.email ,googleID: token.sub,tokenExpiry : token.exp,
+              },
+            });
+            userId=newUser.id
+          }else{
+            await prisma.user.update({
+              where: { email: user.email },
+              data:{
+                googleID: token.sub,tokenExpiry : token.exp,
+              }
+            })
+            
+          }
+        token.id = user.sub ?? token.sub;
+        token.name = user.name;
+        token.email = user.email;
+        token.userId= exsistingUser?.id ? exsistingUser.id : userId;
         }
-      token.id = user.sub ?? token.sub;
-      token.name = user.name;
-      token.email = user.email;
+        return token
+      } catch (error) {
+        throw new Error("Error while signing in : Error "+ error);
       }
-      return token
     },
     async session({ session, token }:any) {
        session.user = {
