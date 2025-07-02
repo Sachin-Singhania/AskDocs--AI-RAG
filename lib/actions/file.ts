@@ -3,12 +3,22 @@ import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } fr
 import redis from '@/lib/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from "../prisma";
-import { useSession } from "next-auth/react";
 import { CreateTopic } from "./rag-pipeline";
+import { getServerSession } from "next-auth";
+import { authOptions } from "../auth";
+import { FileMetadata, URLMetadata } from "../types";
 
 /**
  * Upload buffer to S3
  */
+
+class LimitExceededError extends Error {
+  constructor(message: string = "User limit exceeded") {
+    super(message);
+    this.name = "LimitExceededError";
+  }
+}
+
 async function UploadToS3(
   buffer: Buffer,
   key: string,
@@ -96,7 +106,7 @@ export async function processFile(
     const fileMetadata : FileMetadata = {
       name: nameParts[0],
       path: s3Path,
-      type: "pdf",
+      type: "PDF",
       key,
       chatId: chat.id,
     };
@@ -114,11 +124,14 @@ export async function processFile(
       message: "File processed successfully",
     };
 
-  } catch (error) {
+  } catch (error:any) {
     console.error("Unexpected error processing file:", error);
+    if(error.name!="LimitExceededError"){
+      await increaseLimit();
+    }
     return {
       status: "error",
-      message: "Unexpected server error during processing",
+      message: error.name,
     };
   }
 }
@@ -170,12 +183,12 @@ export async function processUrl(
     const chat= await prisma.chat.create({
       data: {
         status: "WAITING",
-        topic: "",type: "URL",userId,
+        topic: topic ? topic : final,type: "URL",userId,
       },
     })
    const metadata : URLMetadata = {
          url,
-        type: "url",
+        type: "URL",
         chatId: chat.id,
         };
         
@@ -190,11 +203,14 @@ export async function processUrl(
       message: "URL processed successfully",
     };
     }
-    catch (error) {
+    catch (error:any) {
     console.error("Unexpected error processing URL:", error);
+     if(error.name!="LimitExceededError"){
+      await increaseLimit();
+    }
     return {
-      status: "er",
-      message: "Unexpected server error during URL processing",
+      status: "error",
+      message: error.name,
     };
     }   
 }
@@ -227,10 +243,12 @@ async function checkIfURLExsists(url: string) {
 }
 async function checkLimit() {
   try {
-    const email = useSession().data?.user?.email;
-    if (!email) {
+    const data = await getServerSession(authOptions);
+    console.log(data?.user);
+    if (!data?.user?.email) {
       throw new Error("User email not found in session");
     }
+    const email= data.user.email;
 
     const user= await prisma.user.findUnique({
       where: { email },
@@ -259,9 +277,43 @@ async function checkLimit() {
     return user.id;
   } catch (error) {
     console.error("Error checking user limit:", error);
-    throw new Error("Error checking user limit: " + error);
+    throw new LimitExceededError();
   }
 }
 
 
 
+async function increaseLimit() {
+    try {
+    const data = await getServerSession(authOptions);
+    console.log(data?.user);
+    if (!data?.user?.email) {
+      throw new Error("User email not found in session");
+    }
+    const email= data.user.email;
+
+    const user= await prisma.user.findUnique({
+      where: { email },
+      select:{
+        limit: true,
+        id: true,
+      }
+    });
+    if (!user) {
+    console.error("User not found in database");
+    throw new Error("User not found in database");
+  }
+    await prisma.user.update({
+      where: { email },
+      data: {
+        limit: {
+          increment: 1,
+        },
+      },
+    });
+    console.log("User limit Incremented successfully");
+    return user.id;
+  } catch (error) {
+    console.error("Error checking user limit:", error);
+  }
+}

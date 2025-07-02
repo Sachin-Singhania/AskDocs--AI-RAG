@@ -2,30 +2,34 @@
 
 import { $Enums } from "../generated/prisma";
 import { prisma } from "../prisma";
+import { UPLOADMESSAGE } from "../types";
 
-async function uploadMessage(message:UPLOADMESSAGE){
+export async function uploadMessage(message:UPLOADMESSAGE){
   try {
-    await prisma.message.create({
+    const res=await prisma.message.create({
       data:{
         content : message.message,
         Sender: message.role,
         chatId:message.chatId,
+      },select:{
+        content : true,
+        Sender:true,
+        id:true,
       }
-    })
+    });
+    return res
   } catch (error) {
      console.error("Error uploading message:", error);
   }
 }
 
-async function getChats(userId:string): Promise<{
+export async function getChats(userId:string): Promise<{
     id: string;
     topic: string;
     collectionName: string | null;
+    type: $Enums.TYPE;
     messages: {
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        chatId: string;
         content: string;
         Sender: $Enums.Sender;
     }[];
@@ -37,9 +41,16 @@ async function getChats(userId:string): Promise<{
                 status:"COMPLETED"
             },select:{
                 id : true,
-                messages:true,
+                messages:{
+                  select:{
+                    content :true,
+                    Sender: true,
+                    id: true
+                  }
+                },
                 collectionName:true,
                 topic:true,
+                type:true
             }
         })
         return chats;

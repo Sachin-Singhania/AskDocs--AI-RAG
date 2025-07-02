@@ -1,11 +1,16 @@
-enum Role{
+export enum ROLE{
   USER = "USER",
   ASSISTANT = "ASSISTANT",
 }
-interface UPLOADMESSAGE{
+export interface UPLOADMESSAGE{
   chatId: string,
   message: string,
-  role : Role,
+  role : ROLE,
 }
-type FileMetadata = { name: string; path: string; type: string; key: string ;chatId: string }
-type URLMetadata = { url: string; type: "url" ; chatId: string }
+export type FileMetadata = { name: string; path: string; type: "PDF"; key: string ;chatId: string }
+export type URLMetadata = { url: string; type: "URL" ; chatId: string }
+
+export interface MESSAGESSENTTOAI {
+ role:ROLE,
+ content:string
+}

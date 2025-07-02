@@ -1,7 +1,21 @@
 import GoogleProvider from "next-auth/providers/google"
 import { prisma } from "@/lib/prisma" // adjust path as needed
-import { SessionStrategy } from "next-auth"
+import { DefaultSession, SessionStrategy } from "next-auth"
+declare module "next-auth" {
+  interface Session {
+    user?: DefaultSession["user"] & {
+      userId?: string;
+    };
+  }
 
+  interface User {
+    id: string;
+  }
+
+  interface JWT {
+    userId?: string;
+  }
+}
 export const authOptions = {
   session : {
     strategy: "jwt" as SessionStrategy,
@@ -36,12 +50,13 @@ export const authOptions = {
                 googleID: token.sub,tokenExpiry : token.exp,
               }
             })
+            userId = exsistingUser.id;
             
           }
         token.id = user.sub ?? token.sub;
         token.name = user.name;
         token.email = user.email;
-        token.userId= exsistingUser?.id ? exsistingUser.id : userId;
+         token.userId = userId;
         }
         return token
       } catch (error) {
@@ -49,10 +64,10 @@ export const authOptions = {
       }
     },
     async session({ session, token }:any) {
-       session.user = {
-                name: token.name,
-                email: token.email,
-              };
+         session.user = {
+    ...session.user,   // existing fields like name, email, image
+    userId: token.userId
+  };
             return session;
     },
   },

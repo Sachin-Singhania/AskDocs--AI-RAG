@@ -1,7 +1,10 @@
+"use server"
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { chromium } from "playwright";
+import { MESSAGESSENTTOAI } from "../types";
+import { TYPE } from "../generated/prisma";
 
 const ai = new GoogleGenAI(process.env.APIKEY as string);
 const embeddings = new GoogleGenerativeAIEmbeddings({
@@ -15,16 +18,16 @@ async function getQueries(query: string): Promise<Array<string>> {
     Please provide 3 more queries that are related to the original query 
     RULES:
     - Only output valid JSON in the following format:
-    {"queries": "[],[],[]"}
+    {"queries": [],[],[]}
     - Do NOT include any extra text, explanations, or greetings. Only output the JSON.
     - Length of the array must be 3 only 
     Example : - 
     User :- Explain photosynthesis in detail.
-    Generated queries :- '{"queries": "["steps involved in photosynthesis process", "how plants makes food in breif","introduction to photosynthesis and stages"]"}'
+    Generated queries :- '{"queries": ["steps involved in photosynthesis process", "how plants makes food in breif","introduction to photosynthesis and stages"]}'
     User :- I dont get it.
-    Generated queries :- '{"queries": "["explain stepwise", "use b2 level english","give easy analogies"]"}'
+    Generated queries :- '{"queries": ["explain stepwise", "use b2 level english","give easy analogies"]}'
     User : - how i make http server node plz code exampel i no get docs lang hard
-     Generated queries :- '{"queries": "["node js http server code example", "building basic server in Node tutorial", "node js http server codes"]"}'
+     Generated queries :- '{"queries": ["node js http server code example", "building basic server in Node tutorial", "node js http server codes"]}'
     `
         const model = ai.getGenerativeModel({
             model: "gemini-2.0-flash",
@@ -39,27 +42,36 @@ async function getQueries(query: string): Promise<Array<string>> {
         });
         const { response } = await model.generateContent({
             contents: [
-                { role: "system", parts: [{ text: query }] }
+                { role: "user", parts: [{ text: query }] }
             ]
         });
         const final = response.text().trim();
-        const queries: Array<string> = JSON.parse(final).queries;
+        console.log(final);
+        const queries = JSON.parse(final).queries;
         return queries;
     } catch (error) {
         console.error(error);
         return [];
     }
 }
-async function getSourcesFromQueries(queries: string, collectionName: string): Promise<{ data: any[]; error?: undefined; } | { data: never[]; error: any; }> {
+async function getSourcesFromQueries(queries: string, collectionName: string,type:TYPE): Promise<{ data: any[]; error?: undefined; } | { data: never[]; error: any; }> {
     try {
         const ret = new QdrantVectorStore(embeddings, {
             url: 'http://localhost:6333', collectionName,
         })
         const fetch = await ret.similaritySearch(queries);
-        const sources = fetch.map((doc) => doc.metadata.source);
-        const filterunique = sources.filter((url, index, self) => self.indexOf(url) == index).slice(0, 3);
+          let data: any[];
+    if (type === "URL") {
+      // Extract unique source URLs
+      const sources = fetch.map((doc) => doc.metadata.source);
+      data = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
+    } else {
+      // Extract unique page content
+      const contents = fetch.map((doc) => doc.pageContent);
+      data = contents.filter((content, index, self) => self.indexOf(content) === index).slice(0, 3);
+    }
         return {
-            data: filterunique
+            data
         };
     } catch (error: any) {
         return {
@@ -90,40 +102,78 @@ async function getdatafromsources(sources: string[]): Promise<{ data: any[]; err
         };
     }
 }
-export async function ask(query: string, collectionName: string, messages: string[]) {
+
+export async function ask(query: string, collectionName: string, messages: MESSAGESSENTTOAI[],type:TYPE) {
     try {
         const queries = await getQueries(query);
         let sources: any[] = [];
         let errorMessage;
         let context: any[] = [];
-        if (queries.length <= 3 && queries.length != 0) {
-            for (let i = 0; i < queries.length; i++) {
-                let { data, error } = await getSourcesFromQueries(queries[i], collectionName);
+        if (queries.length > 0 && queries.length <= 3) {
+            if (type === "URL") {
+                for (const q of queries) {
+                const { data, error } = await getSourcesFromQueries(q, collectionName, type);
                 if (error) {
                     errorMessage = error;
                     break;
                 }
-                sources.push(data);
-            }
-            const finalsources = sources.filter((url, index, self) => self.indexOf(url) == index).slice(0, 3);
-            const { data, error } = await getdatafromsources(finalsources);
-            if (error && data?.length == 0) {
+                sources.push(...data);
+                }
+
+                sources = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
+                console.log('Final Sources:', sources);
+
+                const { data, error } = await getdatafromsources(sources);
+                if (error || !data || data.length === 0) {
                 errorMessage = error;
+                } else {
+                context.push(...data);
+                }
+
+            } else if (type === "PDF") {
+                sources = []; 
+                for (const q of queries) {
+                const { data, error } = await getSourcesFromQueries(q, collectionName, type);
+                if (error) {
+                    errorMessage = error;
+                    break;
+                }
+                context.push(...data);
+                }
             }
-            context.push(data);
-        }
-
+            }
+            let promptParts: string[] = [];
+            if (context && context.length>0){
+                  promptParts.push(`- CONTEXT: ${JSON.stringify(context)}`);
+            }if (sources && sources.length > 0) {
+                promptParts.push(`- SOURCES: ${JSON.stringify(sources)}`);
+            }
+            if (errorMessage) {
+                promptParts.push(`- ERROR: ${errorMessage}`);
+             }
+             console.log(context);
+            promptParts.push(`- MESSAGES: ${JSON.stringify(messages)}`);
         //   const sources = await getSourcesFromQueries(query);
-
         const systemPrompt = `You are a helpful assistant that can answer questions from the provided context and give mid-long answers in structured way with emojies implementation and short analogies and remember to add sources in bulletpoint
-          Context: ${context} Sources: ${sources} Error :${errorMessage}
-          MESSAGES:- ${messages}
-          
-          Note: 1) If the query is not related to the context of the chat then respond your query is not related to the chat and dont give any answer
-                2) if there is an error then respond user that there is an error and dont give any answer
-                3) If there is no sources or context and error , but query is like explain again , i don't understand , whatever similar to this query then preview the old messages and take context from there 
+          Available inputs:
+         ${promptParts.join("\n")}
+
+         INSTRUCTIONS:
+         1.The user's query may contain minor spelling mistakes or typos. If these can be reasonably matched to the CONTEXT, answer as normal.
+         2. If there is an **ERROR**, politely tell the user:
+           "Something went wrong. Please try again later." Do not answer the query.
+         3. If **CONTEXT is empty** and **there's no ERROR**, but the query is something like:
+            - "I don't understand"
+            - "Explain again"
+            - "Repeat"
+            - "Summarize"
+            - "In short"
+            - "Give chat summary"
+            → Then use the MESSAGES array to generate your response and check what was your last generated response.
+        4. If the user explicitly asks for a **summary of the conversation**, summarize the MESSAGES array instead of using CONTEXT.
+        Answer clearly in human-like tone. Respond only if the context or message history makes the query valid.
           Example:
-          Me- What is Html?
+          Me- What is httml?
           You- HTML stands for HyperText Markup Language. It's basically the building blocks of any website. It tells your browser how to display things like text, images, headings, and links on a webpage. You don’t need to be an expert to start building websites. Learning the basics—like how to create a page layout, add text, images, and links—can be done in a weekend. Once you get those down, you’re good to go.
               HTML5 is the latest version of HTML. It brings new features and improvements, including:
               New semantic elements: <header>, <footer>, <section>, <article>
@@ -170,7 +220,6 @@ export async function ask(query: string, collectionName: string, messages: strin
             contents: [{ role: "user", parts: [{ text: query }] }],
         });
         const final = response.text().trim();
-        console.log(final);
         return final;
     } catch (error: any) {
         return `Error: ${error.message}`;
