@@ -9,6 +9,7 @@ import { useState } from "react"
 import { uploadMessage } from "@/lib/actions/api"
 import { ask } from "@/lib/actions/rag-pipeline"
 import { ROLE, UPLOADMESSAGE } from "@/lib/types"
+import MarkdownViewer from "./Markdown"
 
 export function ChatInterface() {
   const {addMessages,activeChatId,chats} = useChatStore();
@@ -97,7 +98,9 @@ export function ChatInterface() {
                     message.Sender === "USER" ? "bg-blue-600 text-white" : "bg-white border border-gray-200"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <div className="whitespace-pre-wrap">
+                    <MarkdownViewer content={message.content}/>
+                  </div>
                 </div>
               </div>
             </div>

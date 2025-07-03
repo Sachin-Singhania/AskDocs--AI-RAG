@@ -2,7 +2,7 @@
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 import { MESSAGESSENTTOAI } from "../types";
 import { TYPE } from "../generated/prisma";
 
@@ -54,54 +54,66 @@ async function getQueries(query: string): Promise<Array<string>> {
         return [];
     }
 }
-async function getSourcesFromQueries(queries: string, collectionName: string,type:TYPE): Promise<{ data: any[]; error?: undefined; } | { data: never[]; error: any; }> {
+async function getSourcesFromQueries(queries: string, collectionName: string,type:TYPE): Promise<{ sources: any[]; pageContents: any[]; error?: any }> {
     try {
         const ret = new QdrantVectorStore(embeddings, {
             url: 'http://localhost:6333', collectionName,
         })
         const fetch = await ret.similaritySearch(queries);
-          let data: any[];
-    if (type === "URL") {
-      // Extract unique source URLs
-      const sources = fetch.map((doc) => doc.metadata.source);
-      data = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
+          let sources: any[] = [];
+    let pageContents: any[] = [];
+     if (type === "URL") {
+      sources = fetch
+        .map((doc) => doc.metadata.source)
+        .filter((url, index, self) => self.indexOf(url) === index)
+        .slice(0, 3);
+
+      pageContents = fetch
+        .map((doc) => doc.pageContent)
+        .filter((content, index, self) => self.indexOf(content) === index)
+        .slice(0, 3);
     } else {
-      // Extract unique page content
-      const contents = fetch.map((doc) => doc.pageContent);
-      data = contents.filter((content, index, self) => self.indexOf(content) === index).slice(0, 3);
+      // PDF type — only pageContents
+      pageContents = fetch
+        .map((doc) => doc.pageContent)
+        .filter((content, index, self) => self.indexOf(content) === index)
+        .slice(0, 3);
     }
-        return {
-            data
-        };
-    } catch (error: any) {
-        return {
-            data: [],
-            error
-        }
-    }
+       return {
+      sources,
+      pageContents,
+    };
+
+  } catch (error: any) {
+    return {
+      sources: [],
+      pageContents: [],
+      error,
+    };
+  }
 }
-async function getdatafromsources(sources: string[]): Promise<{ data: any[]; error?: undefined; } | { error: unknown; data?: never[]; }> {
-    try {
-        const browser = await chromium.launch();
-        const page = await browser.newPage();
-        const context = [];
-        for (let source of sources) {
-            await page.goto(source, { waitUntil: "domcontentloaded" });
-            const content = await page.$eval("body", (e: { innerText: any; }) => e.innerText);
-            const cleanedText = content.replace(/\n+/g, ' ');
-            context.push(cleanedText);
-        }
-        await browser.close();
-        return {
-            data: context,
-        };
-    } catch (error: unknown) {
-        return {
-            data: [],
-            error: error
-        };
-    }
-}
+// async function getdatafromsources(sources: string[]): Promise<{ data: any[]; error?: undefined; } | { error: unknown; data?: never[]; }> {
+//     try {
+//         const browser = await chromium.launch({headless: true});
+//         const page = await browser.newPage();
+//         const context = [];
+//         for (let source of sources) {
+//             await page.goto(source, { waitUntil: "domcontentloaded" });
+//             const content = await page.$eval("body", (e: { innerText: any; }) => e.innerText);
+//             const cleanedText = content.replace(/\n+/g, ' ');
+//             context.push(cleanedText);
+//         }
+//         await browser.close();
+//         return {
+//             data: context,
+//         };
+//     } catch (error: unknown) {
+//         return {
+//             data: [],
+//             error: error
+//         };
+//     }
+// }
 
 export async function ask(query: string, collectionName: string, messages: MESSAGESSENTTOAI[],type:TYPE) {
     try {
@@ -109,38 +121,42 @@ export async function ask(query: string, collectionName: string, messages: MESSA
         let sources: any[] = [];
         let errorMessage;
         let context: any[] = [];
+        let SummarizeMsg;
+        if(messages.length>4){
+             SummarizeMsg= await SummarizeChat(messages);
+        }
         if (queries.length > 0 && queries.length <= 3) {
-            if (type === "URL") {
+            // if (type === "URL") {
                 for (const q of queries) {
-                const { data, error } = await getSourcesFromQueries(q, collectionName, type);
+                const { pageContents:data_p,sources:data_s, error } = await getSourcesFromQueries(q, collectionName, type);
                 if (error) {
                     errorMessage = error;
                     break;
                 }
-                sources.push(...data);
+                sources.push(...data_s);
+                context.push(...data_p);
                 }
 
                 sources = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
-                console.log('Final Sources:', sources);
+                context = context.filter((contenxt,index,self)=> self.indexOf(contenxt)===index).slice(0,3);
+                // const { data, error } = await getdatafromsources(sources);
+                // if (error || !data || data.length === 0) {
+                // errorMessage = error;
+                // } else {
+                // context.push(...data);
+                // }
 
-                const { data, error } = await getdatafromsources(sources);
-                if (error || !data || data.length === 0) {
-                errorMessage = error;
-                } else {
-                context.push(...data);
-                }
-
-            } else if (type === "PDF") {
-                sources = []; 
-                for (const q of queries) {
-                const { data, error } = await getSourcesFromQueries(q, collectionName, type);
-                if (error) {
-                    errorMessage = error;
-                    break;
-                }
-                context.push(...data);
-                }
-            }
+            // } else if (type === "PDF") {
+            //     sources = []; 
+            //     for (const q of queries) {
+            //     const { data, error } = await getSourcesFromQueries(q, collectionName, type);
+            //     if (error) {
+            //         errorMessage = error;
+            //         break;
+            //     }
+            //     context.push(...data);
+            //     }
+            // }
             }
             let promptParts: string[] = [];
             if (context && context.length>0){
@@ -151,8 +167,11 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             if (errorMessage) {
                 promptParts.push(`- ERROR: ${errorMessage}`);
              }
-             console.log(context);
-            promptParts.push(`- MESSAGES: ${JSON.stringify(messages)}`);
+             if(messages.length<=4){
+                 promptParts.push(`- SUMMARIZED MESSAGES : ${JSON.stringify(messages)}`);
+             }else{
+                 promptParts.push(`- SUMMARIZED MESSAGES : ${JSON.stringify(SummarizeMsg)}`);
+             }
         //   const sources = await getSourcesFromQueries(query);
         const systemPrompt = `You are a helpful assistant that can answer questions from the provided context and give mid-long answers in structured way with emojies implementation and short analogies and remember to add sources in bulletpoint
           Available inputs:
@@ -169,7 +188,7 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             - "Summarize"
             - "In short"
             - "Give chat summary"
-            → Then use the MESSAGES array to generate your response and check what was your last generated response.
+            → Then use the MESSAGES array to generate your response 
         4. If the user explicitly asks for a **summary of the conversation**, summarize the MESSAGES array instead of using CONTEXT.
         Answer clearly in human-like tone. Respond only if the context or message history makes the query valid.
           Example:
@@ -257,4 +276,33 @@ export async function CreateTopic(URLorPDFname: string) {
     const json = JSON.parse(final);
     console.log(json.topic);
     return json.topic;
+}
+
+async function SummarizeChat(messages:MESSAGESSENTTOAI[]) {
+    try {
+        const lastThreeMsg= messages.slice(messages.length-4,messages.length-1);
+        console.log(lastThreeMsg);
+        const query = `You are an Ai Chat Summarizer, You will summarize the chat message from the given messages
+        MESSAGES:-
+        ${lastThreeMsg.map((m, i) => `(${i + 1}) [${m.role}] ${m.content}`).join('\n')}
+        `
+         const model = ai.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            generationConfig: {
+                temperature: 1.5,
+            },
+            systemInstruction: {
+                    role: "system",
+            parts: [{ text: query }]
+            }
+        });
+        const { response } = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: query }] }],
+        });
+        const final = response.text().trim();
+        return final;
+    } catch (error) {
+        
+    }
+    
 }
