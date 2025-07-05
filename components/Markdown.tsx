@@ -7,7 +7,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 export default function MarkdownViewer({ content }: { content: string }) {
   return (
-    <div className="prose prose-lg max-w-none dark:prose-invert">
+    <div className="prose prose-lg max-w-none dark:prose-invert prose-pre:my-2 prose-p:my-2 prose-code:my-0 ">
       <ReactMarkdown
         components={{
           code({inline, className, children, ...props}: {inline?: boolean, className?: string, children?: React.ReactNode, [key: string]: any}) {

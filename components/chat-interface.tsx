@@ -98,9 +98,7 @@ export function ChatInterface() {
                     message.Sender === "USER" ? "bg-blue-600 text-white" : "bg-white border border-gray-200"
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">
                     <MarkdownViewer content={message.content}/>
-                  </div>
                 </div>
               </div>
             </div>

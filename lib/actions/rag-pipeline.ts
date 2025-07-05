@@ -2,10 +2,11 @@
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { chromium } from "playwright-core";
 import { MESSAGESSENTTOAI } from "../types";
 import { TYPE } from "../generated/prisma";
-
+import { QdrantClient } from "@qdrant/js-client-rest";
+const qdrantUrl = 'http://localhost:6333';
+const client = new QdrantClient({ url: qdrantUrl });
 const ai = new GoogleGenAI(process.env.APIKEY as string);
 const embeddings = new GoogleGenerativeAIEmbeddings({
     modelName: process.env.MODEL_NAME,
@@ -54,11 +55,25 @@ async function getQueries(query: string): Promise<Array<string>> {
         return [];
     }
 }
+async function ensureCollectionExistsThenConnect(collectionName: string): Promise<QdrantVectorStore> {
+  // Check if the collection exists
+  try {
+    await client.getCollection(collectionName);
+  } catch (err) {
+    console.error(`Collection ${collectionName} does not exist.`, err);
+    throw new Error(`Collection "${collectionName}" does not exist. Aborting.`);
+  }
+
+  // Now safe to connect without creating
+  return new QdrantVectorStore(embeddings, {
+    url: qdrantUrl,
+    collectionName
+  });
+}
 async function getSourcesFromQueries(queries: string, collectionName: string,type:TYPE): Promise<{ sources: any[]; pageContents: any[]; error?: any }> {
     try {
-        const ret = new QdrantVectorStore(embeddings, {
-            url: 'http://localhost:6333', collectionName,
-        })
+        const ret = await ensureCollectionExistsThenConnect(collectionName);
+       
         const fetch = await ret.similaritySearch(queries);
           let sources: any[] = [];
     let pageContents: any[] = [];
@@ -164,6 +179,7 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             }if (sources && sources.length > 0) {
                 promptParts.push(`- SOURCES: ${JSON.stringify(sources)}`);
             }
+            console.log(sources);
             if (errorMessage) {
                 promptParts.push(`- ERROR: ${errorMessage}`);
              }
@@ -173,7 +189,6 @@ export async function ask(query: string, collectionName: string, messages: MESSA
                  promptParts.push(`- SUMMARIZED MESSAGES : ${JSON.stringify(SummarizeMsg)}`);
              }
         //   const sources = await getSourcesFromQueries(query);
-
 
         const example = `Me- What is httml?
 
@@ -216,13 +231,15 @@ With just these, you can create your first real web page!
 - [HTML Tags – ChaiDocs](https://chaidocs.vercel.app/youtube/chai-aur-html/html-tags/)
 `;
 
-const systemPrompt = `You are an helpful AI that generate accurate answers to the queries along with the given context sometimes. Explain user queries in detail mid-long answers or in whatever user wishes , in **MARKDOWN FILE** format  with emojies ,code implementation if any , good analogies and sources in the end if provided below in bulletpoints.
+const systemPrompt = `You are an helpful AI that generate accurate answers to the queries along with the given context. Explain user queries in 10-20 lines of answers or in whatever user wishes , in **MARKDOWN FILE** format  with emojies ,code implementation if any , good analogies and sources in the end if provided below in bulletpoints.
 
 **RULES:-**
-1) Response should be in only MARKDOWN FILE format
+1) Response should be in only **MARKDOWN FILE** format and don't use to many line breaks
 2) All responses will be in formal
 3) No Informal or lame talks or out of context talks 
 4) Human-tone language 
+5) Don't reply to out of context queries strictly follow the rules
+6) If error , don't generate answer , instead tell the user that you can't generate answer right now due to some error , don't tell the error message to user
 
 **INSTRUCTIONS:-**
 1)Allow minor spelling errors , grammatical mistakes that are related to the context. Try to understand the intented meaning if words are misspelled or ambiguous. 
@@ -234,7 +251,8 @@ const systemPrompt = `You are an helpful AI that generate accurate answers to th
    - "in short "
    - "brief again"
 Then refer the chat messages provided and try to understand what user meant to be explained what
-
+4) Only answer to those queries that are related to the context provided and chat messages provided in Available Inputs 
+5) Always check the instruction and rules before generating the response
 
 **AVAILABLE INPUTS:-**
 ${promptParts.join("\n")}
@@ -243,6 +261,8 @@ ${promptParts.join("\n")}
  ${example}
 `;
 
+console.log(errorMessage)
+console.log(context);
 
         const model = ai.getGenerativeModel({
             model: "gemini-2.0-flash",
@@ -258,6 +278,7 @@ ${promptParts.join("\n")}
             contents: [{ role: "user", parts: [{ text: query }] }],
         });
         const final = response.text().trim();
+        console.log(final);
         return final;
     } catch (error: any) {
         return `Error: ${error.message}`;
