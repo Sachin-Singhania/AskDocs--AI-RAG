@@ -91,6 +91,19 @@ const config: Config = {
   		}
   	}
   },
-  plugins: [require("tailwindcss-animate")],
-};
+  plugins: [
+	require("tailwindcss-animate"),
+	function({ addUtilities }: { addUtilities: (utilities: Record<string, any>) => void }) {
+	  addUtilities({
+		'.no-scrollbar': {
+		  '-ms-overflow-style': 'none',  
+		  'scrollbar-width': 'none',    
+		},
+		'.no-scrollbar::-webkit-scrollbar': {
+		  'display': 'none',            
+		},
+	  });
+	},
+  ],
+}
 export default config;
