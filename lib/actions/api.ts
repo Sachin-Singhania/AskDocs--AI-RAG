@@ -1,9 +1,26 @@
 "use server"
 
+import { headers } from "next/headers";
 import { $Enums } from "../generated/prisma";
 import { prisma } from "../prisma";
+import { ratelimit } from "../rate-limit";
 import { UPLOADMESSAGE } from "../types";
 
+
+export async function rate_limit_action_function() {
+   const ip = (await headers()).get('x-forwarded-for') ?? 'unknown';
+    console.log(`Request from IP: ${ip}`);
+  const { success, limit, remaining } = await ratelimit.limit(ip);
+
+  if (!success) {
+    throw new Error('Too Many Requests', {cause : { status: 429 } });
+  }
+
+  return {
+    limit,
+    remaining,
+  }
+}
 export async function uploadMessage(message:UPLOADMESSAGE){
   try {
     const res=await prisma.message.create({
@@ -59,3 +76,20 @@ export async function getChats(userId:string): Promise<{
     }
 }
 
+export async function IsProcessing(userId:string){
+try {
+  const count = await prisma.chat.count({
+  where: {
+    userId,
+    status: "PROCESSING"
+  }
+});
+   if (count>=1){
+    return true;
+   }else{
+    return false;
+   }
+} catch (error) {
+    throw new Error("Error While Calling DB");
+}
+}

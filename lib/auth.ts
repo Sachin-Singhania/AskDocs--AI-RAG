@@ -1,6 +1,8 @@
 import GoogleProvider from "next-auth/providers/google"
-import { prisma } from "@/lib/prisma" // adjust path as needed
+import { prisma } from "@/lib/prisma" 
 import { DefaultSession, SessionStrategy } from "next-auth"
+import { signin_rate_limit } from "./rate-limit";
+import { headers } from "next/headers";
 declare module "next-auth" {
   interface Session {
     user?: DefaultSession["user"] & {
@@ -65,10 +67,19 @@ export const authOptions = {
     },
     async session({ session, token }:any) {
          session.user = {
-    ...session.user,   // existing fields like name, email, image
+    ...session.user,  
     userId: token.userId
   };
+
             return session;
     },
+    async signIn() {
+      const ip = (await headers()).get('x-forwarded-for') ?? 'unknown';
+      const { success } = await signin_rate_limit.limit(ip);
+      console.log(`Request from IP: ${ip}`);
+      if (!success) {
+        return false;
+      }
+      return true;
   },
-}
+}}

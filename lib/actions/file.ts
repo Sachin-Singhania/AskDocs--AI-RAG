@@ -7,6 +7,7 @@ import { CreateTopic } from "./rag-pipeline";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth";
 import { FileMetadata, URLMetadata } from "../types";
+import { IsProcessing, rate_limit_action_function } from "./api";
 
 /**
  * Upload buffer to S3
@@ -74,6 +75,16 @@ export async function processFile(
   file: File
 ): Promise<{ status: string; message: string }> { 
   try {
+    rate_limit_action_function();
+      const data = await getServerSession(authOptions);
+    console.log(data?.user);
+    if (!data?.user?.userId) {
+      throw new Error("User ID not found in session");
+    }
+    const response=await IsProcessing(data.user.userId);
+    if(response){
+      return { status:"error", message:"Already Processing a file"}
+    }
     if (!file) {
       console.error("No file provided");
       return { status: "error", message: "No file provided" };
@@ -154,6 +165,15 @@ export async function processUrl(
   url: string
 ): Promise<{ status: string; message: string }> {
   try {
+    rate_limit_action_function();
+    const data = await getServerSession(authOptions);
+    if (!data?.user?.userId) {
+      throw new Error("User ID not found in session");
+    }
+    const response=await IsProcessing(data.user.userId);
+    if(response){
+      return { status:"error", message:"Already Processing a file"}
+    }
     if (!url) {
       console.error("No URL provided");
       return { status: "error", message: "No URL provided" };
@@ -167,7 +187,7 @@ export async function processUrl(
     const topic= await CreateTopic(uri.origin);
     if (status) {
       console.log(message);
-      const chat= await prisma.chat.create({
+      await prisma.chat.create({
       data: {
         status: "COMPLETED",collectionName,
         topic:topic ? topic : final,type: "URL",userId,

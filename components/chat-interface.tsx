@@ -46,7 +46,8 @@ export function ChatInterface() {
           response?.content,
           chat?.collectionName,
           msgs,
-          chat.type
+          chat.type,
+          chat.id
         );
         if(ai!=""){
            const msg:UPLOADMESSAGE= {

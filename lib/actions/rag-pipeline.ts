@@ -2,9 +2,20 @@
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { MESSAGESSENTTOAI } from "../types";
+import { MESSAGESSENTTOAI, MESSAGESSENTTOAI_WITHSUMMARY } from "../types";
 import { TYPE } from "../generated/prisma";
 import { QdrantClient } from "@qdrant/js-client-rest";
+import { rate_limit_action_function } from "./api";
+import { systemPrompt } from "../systemprompt";
+
+
+class GEMINI_ERROR extends Error{
+    constructor(message: string) {
+    super(message);
+    this.name = "GEMINI_ERROR";
+  }
+}
+
 const qdrantUrl = 'http://localhost:6333';
 const client = new QdrantClient({ url: qdrantUrl });
 const ai = new GoogleGenAI(process.env.APIKEY as string);
@@ -107,41 +118,25 @@ async function getSourcesFromQueries(queries: string, collectionName: string,typ
     };
   }
 }
-// async function getdatafromsources(sources: string[]): Promise<{ data: any[]; error?: undefined; } | { error: unknown; data?: never[]; }> {
-//     try {
-//         const browser = await chromium.launch({headless: true});
-//         const page = await browser.newPage();
-//         const context = [];
-//         for (let source of sources) {
-//             await page.goto(source, { waitUntil: "domcontentloaded" });
-//             const content = await page.$eval("body", (e: { innerText: any; }) => e.innerText);
-//             const cleanedText = content.replace(/\n+/g, ' ');
-//             context.push(cleanedText);
-//         }
-//         await browser.close();
-//         return {
-//             data: context,
-//         };
-//     } catch (error: unknown) {
-//         return {
-//             data: [],
-//             error: error
-//         };
-//     }
-// }
 
-export async function ask(query: string, collectionName: string, messages: MESSAGESSENTTOAI[],type:TYPE) {
+
+export async function ask(query: string, collectionName: string, messages: MESSAGESSENTTOAI[],type:TYPE,chatId:string) {
     try {
+        rate_limit_action_function();
         const queries = await getQueries(query);
         let sources: any[] = [];
         let errorMessage;
         let context: any[] = [];
-        let SummarizeMsg;
-        if(messages.length>4){
-             SummarizeMsg= await SummarizeChat(messages);
+        let SummarizeMsg: MESSAGESSENTTOAI_WITHSUMMARY | null = null;
+        if(messages.length>5){
+             let messageFromApi= await SummarizeChat(messages,chatId);
+     let lastThreeMessages = messages.slice(-3);
+     SummarizeMsg = {
+         ChatSummary: messageFromApi ?? "",
+         messages: lastThreeMessages
+     };
         }
         if (queries.length > 0 && queries.length <= 3) {
-            // if (type === "URL") {
                 for (const q of queries) {
                 const { pageContents:data_p,sources:data_s, error } = await getSourcesFromQueries(q, collectionName, type);
                 if (error) {
@@ -154,24 +149,6 @@ export async function ask(query: string, collectionName: string, messages: MESSA
 
                 sources = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
                 context = context.filter((contenxt,index,self)=> self.indexOf(contenxt)===index).slice(0,3);
-                // const { data, error } = await getdatafromsources(sources);
-                // if (error || !data || data.length === 0) {
-                // errorMessage = error;
-                // } else {
-                // context.push(...data);
-                // }
-
-            // } else if (type === "PDF") {
-            //     sources = []; 
-            //     for (const q of queries) {
-            //     const { data, error } = await getSourcesFromQueries(q, collectionName, type);
-            //     if (error) {
-            //         errorMessage = error;
-            //         break;
-            //     }
-            //     context.push(...data);
-            //     }
-            // }
             }
             let promptParts: string[] = [];
             if (context && context.length>0){
@@ -183,86 +160,13 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             if (errorMessage) {
                 promptParts.push(`- ERROR: ${errorMessage}`);
              }
-             if(messages.length<=4){
+             if(messages.length<6){
                  promptParts.push(`- SUMMARIZED MESSAGES : ${JSON.stringify(messages)}`);
              }else{
                  promptParts.push(`- SUMMARIZED MESSAGES : ${JSON.stringify(SummarizeMsg)}`);
              }
-        //   const sources = await getSourcesFromQueries(query);
 
-        const example = `Me- What is httml?
-
-You- HTML stands for **HyperText Markup Language**. It's basically the building blocks of any website. It tells your browser how to display things like text, images, headings, and links on a webpage. You don’t need to be an expert to start building websites. Learning the basics—like how to create a page layout, add text, images, and links—can be done in a weekend. Once you get those down, you’re good to go.
-
-**HTML5** is the latest version of HTML. It brings new features and improvements, including:
-- **New semantic elements**: \`<header>\`, \`<footer>\`, \`<section>\`, \`<article>\`
-- **Built-in support for audio, video, and graphics**: \`<audio>\`, \`<video>\`, \`<canvas>\`
-- **Improved form controls**: \`<input type="date">\`, \`<input type="range">\`
-
-### 🧪 HTML5 Example
-
-\`\`\`html
-<article>
-  <header>
-    <h2>Learning HTML5</h2>
-  </header>
-  <p>HTML5 makes web development simpler and more powerful.</p>
-  <video controls>
-    <source src="demo.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-</article>
-\`\`\`
-
-### 📘 How Much HTML Do You Need to Learn?
-
-You only need the basics to get started. Focus on these key elements:
-
-- **Structure**: \`<html>\`, \`<head>\`, \`<body>\`
-- **Content**: \`<h1>\` to \`<h6>\`, \`<p>\`, \`<a>\`, \`<img>\`
-- **Lists**: \`<ul>\`, \`<ol>\`, \`<li>\`
-- **Forms**: \`<form>\`, \`<input>\`, \`<button>\`
-
-With just these, you can create your first real web page!
-
-### 🔗 Sources
-
-- [Introduction to HTML – ChaiDocs](https://chaidocs.vercel.app/youtube/chai-aur-html/introduction/)
-- [HTML Tags – ChaiDocs](https://chaidocs.vercel.app/youtube/chai-aur-html/html-tags/)
-`;
-
-const systemPrompt = `You are an helpful AI that generate accurate answers to the queries along with the given context. Explain user queries in 10-20 lines of answers or in whatever user wishes , in **MARKDOWN FILE** format  with emojies ,code implementation if any , good analogies and sources in the end if provided below in bulletpoints.
-
-**RULES:-**
-1) Response should be in only **MARKDOWN FILE** format and don't use to many line breaks
-2) All responses will be in formal
-3) No Informal or lame talks or out of context talks 
-4) Human-tone language 
-5) Don't reply to out of context queries strictly follow the rules
-6) If error , don't generate answer , instead tell the user that you can't generate answer right now due to some error , don't tell the error message to user
-
-**INSTRUCTIONS:-**
-1)Allow minor spelling errors , grammatical mistakes that are related to the context. Try to understand the intented meaning if words are misspelled or ambiguous. 
- -Must Check for Fuzzy Matching , Fuzzy error , Approximate matching
-2)If there is any error in Available Inputs response that there was an error in generating responses and solve the user queries in your own words or from chat messages that are provided in Available Inputs
-3)If there are no context in available inputs and user query is like:-
-   - "I don't understand"
-   - "explain again"
-   - "in short "
-   - "brief again"
-Then refer the chat messages provided and try to understand what user meant to be explained what
-4) Only answer to those queries that are related to the context provided and chat messages provided in Available Inputs 
-5) Always check the instruction and rules before generating the response
-
-**AVAILABLE INPUTS:-**
-${promptParts.join("\n")}
-
-**Example:-**
- ${example}
-`;
-
-console.log(errorMessage)
-console.log(context);
+        const system_prompt= systemPrompt(promptParts);
 
         const model = ai.getGenerativeModel({
             model: "gemini-2.0-flash",
@@ -271,7 +175,7 @@ console.log(context);
             },
             systemInstruction: {
                 role: "system",
-                parts: [{ text: systemPrompt }],
+                parts: [{ text: system_prompt }],
             }
         });
         const { response } = await model.generateContent({
@@ -281,51 +185,110 @@ console.log(context);
         console.log(final);
         return final;
     } catch (error: any) {
-        return `Error: ${error.message}`;
+        throw new GEMINI_ERROR("THERE WAS SOME ERROR WHILE PROCESSING MESSAGE")
     }
 }
 
 
 export async function CreateTopic(URLorPDFname: string) {
-    const query = `Create a chat topic for given url or pdf name 
-    Note:- use good and nice words and not same repetive from examples
-    RULES:
-    - Only output valid JSON in the following format:
-    {"topic": "<topic-name>"}
-    - Do NOT include any extra text, explanations, or greetings. Only output the JSON.
-    for Example:-
-     USER:-https://threejs.org/docs/
-     YOU:- '{"topic":"Threejs tutorial"}'
-     USER: - Nodejs.pdf
-     YOU:- '{"topic":"Learning Nodejs"}'
-    `;
-    const model = ai.getGenerativeModel({
-        model: "gemini-2.0-flash",
-        generationConfig: {
-            temperature: 1.5,
-            responseMimeType: "application/json",
-        }, systemInstruction: {
-            role: "system",
-            parts: [{ text: query }]
-        }
-    });
-    const { response } = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: URLorPDFname }] }],
-    });
-    const final = response.text().trim();
-    const json = JSON.parse(final);
-    console.log(json.topic);
-    return json.topic;
+    try {
+        const query = `Create a chat topic for given url or pdf name 
+        Note:- use good and nice words and not same repetive from examples
+        RULES:
+        - Only output valid JSON in the following format:
+        {"topic": "<topic-name>"}
+        - Do NOT include any extra text, explanations, or greetings. Only output the JSON.
+        for Example:-
+         USER:-https://threejs.org/docs/
+         YOU:- '{"topic":"Threejs tutorial"}'
+         USER: - Nodejs.pdf
+         YOU:- '{"topic":"Learning Nodejs"}'
+        `;
+        const model = ai.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            generationConfig: {
+                temperature: 1.5,
+                responseMimeType: "application/json",
+            }, systemInstruction: {
+                role: "system",
+                parts: [{ text: query }]
+            }
+        });
+        const { response } = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: URLorPDFname }] }],
+        });
+        const final = response.text().trim();
+        const json = JSON.parse(final);
+        return json.topic;
+    } catch (error) {
+        throw new GEMINI_ERROR("THERE WAS SOME ERROR WHILE CALLING GEMINI");
+    }
 }
 
-async function SummarizeChat(messages:MESSAGESSENTTOAI[]) {
+async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
     try {
-        const lastThreeMsg= messages.slice(messages.length-4,messages.length-1);
-        console.log(lastThreeMsg);
-        const query = `You are an Ai Chat Summarizer, You will summarize the chat message from the given messages
-        MESSAGES:-
-        ${lastThreeMsg.map((m, i) => `(${i + 1}) [${m.role}] ${m.content}`).join('\n')}
-        `
+        if(messages.length<6) return;
+        const length=messages.length;
+
+        const local_storage= localStorage.getItem('Summarized-Chat') ?? "{}";
+        const PreviousSummarizedChat:{
+            [key:string]: string
+        }= JSON.parse(local_storage);
+        const currChatIdSummarized= PreviousSummarizedChat[chatId] ? PreviousSummarizedChat[chatId] : null;
+
+        if(length>=6 && currChatIdSummarized==null){
+            let remaining_chat_length= length-4;
+            let no_of_chats= remaining_chat_length>=6 ? 6 : remaining_chat_length;
+            let chats= messages.slice(remaining_chat_length-no_of_chats,remaining_chat_length);
+            const query = `You are an Ai Chat Summarizer, You will summarize the chat message from the given messages
+            MESSAGES:-
+            ${chats.map((m, i) => `(${i + 1}) [${m.role}] ${m.content}`).join('\n')}
+            `
+         const model = ai.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            generationConfig: {
+                temperature: 1.5,
+            },
+        });
+        const { response } = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: query }] }],
+        });
+        const final = response.text().trim();
+        return final;
+        }
+
+
+        const message= messages[length-5].content;
+        const query = `You are an Ai Chat Summarizer, You will summarize the chat message with given previous messages that was summarized from the given messages
+         INSTRUCTION :
+         - Highlight important things if user has asked bunch of question previously then summarized must also contain those question, so that you stay aware of the main context
+         - If current Message is related to error or something that has gone wrong from your analysis then don't give that importance to that message and return summarized as it is
+         - Analyze messages , try to understand the message intent 
+         AVAILABLE INPUTS:-
+         - PREVIOUS SUMMARIZED MESSAGE: - ${PreviousSummarizedChat}
+        
+         Example:- 
+           Me : PREVIOUS SUMMARIZED MESSAGE :- We talked about intrusion detection system then its types along with intrusion prevention system along with its types. User didn't understood so we explaine again 
+                Current Message :- I am sorry, I cannot provide an answer regarding local storage in Next.js as it is not covered in the given context.
+           You : We talked about intrusion detection system then its types along with intrusion prevention system along with its types. User didn't understood so we explaine again 
+          
+           Me : PREVIOUS SUMMARIZED MESSAGE :- We talked about intrusion detection system then its types along with intrusion prevention system along with its types. User didn't understood so we explaine again 
+                Current Message :- I am unable to generate a response at this time due to an error.
+           You : We talked about intrusion detection system then its types along with intrusion prevention system along with its types. User didn't understood so we explaine again 
+           
+           Me : PREVIOUS SUMMARIZED MESSAGE :- We talked about intrusion detection system then its types along with intrusion prevention system along with its types. User didn't understood so we explain again 
+                 Current Message :- Give answer to all these questions 
+                 1) What is ids used for?
+                 2) what is advantage of ips over ids?
+                 3) what is differnce between ids and ips?
+                
+           You : We talked about IDS and IPS earlier, Now user has provided us with some questions 1) ids uses? 2) advantage of ips over ids? 3) difference between ids and ips?  
+
+           Me: PREVIOUS SUMMARIZED MESSAGE :-We talked about IDS and IPS earlier, Now user has provided us with some questions 1) ids uses? 2) advantage of ips over ids? 3) difference between ids and ips?  
+                Current Message :- okay next
+
+           You : We talked about IDS and IPS earlier then user provided with questions and my analysis user understood 1st question which was Intrusion detection system uses so here are the remaning question 2) advantage of ips over ids 3) difference between ids and ips
+           `
          const model = ai.getGenerativeModel({
             model: "gemini-2.0-flash",
             generationConfig: {
@@ -337,12 +300,12 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[]) {
             }
         });
         const { response } = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: query }] }],
+            contents: [{ role: "user", parts: [{ text: message }] }],
         });
         const final = response.text().trim();
         return final;
     } catch (error) {
-        
+        return;
     }
     
 }

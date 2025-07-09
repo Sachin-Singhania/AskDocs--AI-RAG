@@ -10,13 +10,16 @@ import { getChats } from "@/lib/actions/api"
 export default function Page() {
   const [documentType, setDocumentType] = useState<"pdf" | "url" | null>(null)
   const {data:session,status} = useSession();
+  const [Isfetched, setIsfetched] = useState<boolean>(false)
     const { activeChatId,setChats,chats } = useChatStore();
   useEffect(() => {
-      if (status !== "authenticated" || !session?.user?.userId) return;
-
+      if (status !== "authenticated" || !session?.user?.userId || Isfetched) return;
   async function chat(userId: string) {
     try {
+      if(Isfetched) return;
       const res = await getChats(userId);
+      console.log("Fetching chats for user:", res);
+      setIsfetched(true);
       if (res) {
         setChats(res);
       }
@@ -26,7 +29,7 @@ export default function Page() {
   }
   
   chat(session.user.userId);
-}, [session,status])  
+}, [session,status,Isfetched])  
 
 
   return (

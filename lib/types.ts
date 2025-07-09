@@ -14,3 +14,7 @@ export interface MESSAGESSENTTOAI {
  role:ROLE,
  content:string
 }
+export interface MESSAGESSENTTOAI_WITHSUMMARY {
+  messages: MESSAGESSENTTOAI[];
+    ChatSummary?: string;
+}
