@@ -16,8 +16,7 @@ class GEMINI_ERROR extends Error{
   }
 }
 
-const qdrantUrl = 'http://localhost:6333';
-const client = new QdrantClient({ url: qdrantUrl });
+const client = new QdrantClient({ url: process.env.QDRANT_URL ,apiKey: process.env.QDRANT_API_KEY});
 const ai = new GoogleGenAI(process.env.APIKEY as string);
 const embeddings = new GoogleGenerativeAIEmbeddings({
     modelName: process.env.MODEL_NAME,
@@ -77,7 +76,7 @@ async function ensureCollectionExistsThenConnect(collectionName: string): Promis
 
   // Now safe to connect without creating
   return new QdrantVectorStore(embeddings, {
-    url: qdrantUrl,
+    client,
     collectionName
   });
 }
@@ -156,7 +155,7 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             }if (sources && sources.length > 0) {
                 promptParts.push(`- SOURCES: ${JSON.stringify(sources)}`);
             }
-            console.log(sources);
+            console.log(context);
             if (errorMessage) {
                 promptParts.push(`- ERROR: ${errorMessage}`);
              }

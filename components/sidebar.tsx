@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/store/store"
-import { CheckCircle, Clock, FileText, Globe, MessageSquare, RotateCcw, Sparkles, Trash2 } from "lucide-react"
+import {  FileText, Globe, MessageSquare, RotateCcw, Sparkles, Trash2 } from "lucide-react"
 import { Card } from "./ui/card"
 
 interface SidebarProps {

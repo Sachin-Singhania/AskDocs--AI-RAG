@@ -7,7 +7,7 @@ export interface UPLOADMESSAGE{
   message: string,
   role : ROLE,
 }
-export type FileMetadata = { name: string; path: string; type: "PDF"; key: string ;chatId: string }
+export type FileMetadata = { name: string; type: "PDF"; key: string ;chatId: string }
 export type URLMetadata = { url: string; type: "URL" ; chatId: string }
 
 export interface MESSAGESSENTTOAI {

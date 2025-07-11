@@ -10,26 +10,42 @@ import { getChats } from "@/lib/actions/api"
 export default function Page() {
   const [documentType, setDocumentType] = useState<"pdf" | "url" | null>(null)
   const {data:session,status} = useSession();
-  const [Isfetched, setIsfetched] = useState<boolean>(false)
     const { activeChatId,setChats,chats } = useChatStore();
   useEffect(() => {
-      if (status !== "authenticated" || !session?.user?.userId || Isfetched) return;
-  async function chat(userId: string) {
+      if (status !== "authenticated" || !session?.user?.userId) return;
+      let isCanceled = false;
+      let id: NodeJS.Timeout | null = null;
+      async function chat(userId: string) {
+    let pollInterval = 4000;
     try {
-      if(Isfetched) return;
       const res = await getChats(userId);
-      console.log("Fetching chats for user:", res);
-      setIsfetched(true);
-      if (res) {
+      if (res && res.length > 0) {
         setChats(res);
+        if (res.length >=5) {
+          pollInterval= 20000;
+        }else{
+          pollInterval= 4000;
+        }
+      }else{
+        pollInterval= 10000;
       }
     } catch (error) {
       console.log(error);
+      pollInterval = 15000;
+    }
+    if (!isCanceled) {
+     id = setTimeout(() => chat(userId), pollInterval);
     }
   }
-  
   chat(session.user.userId);
-}, [session,status,Isfetched])  
+  
+  return () => {
+    isCanceled = true;
+    if (id) {
+      clearTimeout(id);
+    }
+  }
+}, [status])  
 
 
   return (

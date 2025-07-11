@@ -1,26 +1,16 @@
-import { createClient } from 'redis';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-const client = createClient({
-  url: process.env.REDIS_URL,
-  socket: {
-    reconnectStrategy: (retries) => {
-      console.log(`🔄 Reconnecting to Redis... Attempt #${retries}`);
-      const baseDelay = 200;
-      const maxDelay = 5000;
-      const delay = Math.min(baseDelay * retries, maxDelay);
-      const jitter = Math.random() * 100;
-      return jitter + delay; 
-    },
-  },
+export const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+export const ratelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.fixedWindow(50, '1 m'),
 });
 
-client.on('error', (err) => console.error('Redis Client Error', err));
-client.on('connect', () => {
-  console.log('✅ Connected to Redis');
+export const signin_rate_limit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.fixedWindow(5, '1 m'),
 });
-
-(async () => {
-  await client.connect();
-})();
-
-export default client;

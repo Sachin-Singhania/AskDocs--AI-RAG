@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Upload, Globe, Loader2, Sparkles, FileText, Link } from "lucide-react"
 import { processFile, processUrl } from "@/lib/actions/file"
+import { useSession } from "next-auth/react"
 
 interface DocumentProcessorProps {
   documentType: "pdf" | "url" | null
@@ -18,6 +19,7 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   const [url, setUrl] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const {data:session,status} = useSession();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
@@ -30,6 +32,9 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
     setUrl(inputUrl)
   }
   const handleProcessClick = async () => {
+    if (status !== "authenticated" || !session?.user || !session?.user?.userId) {
+      return;
+    }
   setIsProcessing(true);
   try {
     if (documentType === "pdf" && file) {

@@ -1,6 +1,5 @@
 "use server";
-import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from "@aws-sdk/client-s3";
-import redis from '@/lib/redis';
+import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from "../prisma";
 import { CreateTopic } from "./rag-pipeline";
@@ -8,6 +7,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth";
 import { FileMetadata, URLMetadata } from "../types";
 import { IsProcessing, rate_limit_action_function } from "./api";
+import { redis } from "../redis";
 
 /**
  * Upload buffer to S3
@@ -19,22 +19,34 @@ class LimitExceededError extends Error {
     this.name = "LimitExceededError";
   }
 }
+class S3Error extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "S3Error";
+  }
+}
+class RedisError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RedisError";
+  }
+}
 
 async function UploadToS3(
   buffer: Buffer,
   key: string,
   contentType: string,
-): Promise<string | undefined> {
+) {
   try {
-    const s3 = new S3Client({
-      region: "us-east-1",
-      endpoint: "http://localhost:4566",
-      credentials: {
-        accessKeyId: "test",
-        secretAccessKey: "test"
-      },
-      forcePathStyle: true
-    });
+const s3 = new S3Client({
+    region:  process.env.S3_REGION || "ap-south-1",
+    credentials: {
+      accessKeyId:  process.env.S3_ACCESS_KEY_ID || "test",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY  || "test", 
+    },
+    forcePathStyle: true
+  });
+ 
 
     await ensureBucketExists(s3, process.env.S3_BUCKET as string);
 
@@ -45,15 +57,9 @@ async function UploadToS3(
       ContentType: contentType,
     };
 
-    const data = await s3.send(new PutObjectCommand(params));
-    console.log("File uploaded successfully:", data);
-    // const path =  https://${bucket}.s3.${region}.amazonaws.com/${key}; for aws s3
-    const path = `http://localhost:4566/rag-chat-bucket/${key}`;
-    return path;
-
+     await s3.send(new PutObjectCommand(params));
   } catch (error) {
-    console.error("Error uploading to S3:", error);
-    throw new Error("Failed to upload file to S3: " + error);
+    throw new S3Error("Failed to upload file to S3: " + error);
   }
 }
 
@@ -62,7 +68,7 @@ async function UploadToRedis(
 ): Promise<boolean> {
   try {
     const QUEUE_NAME = 'task_queue';
-    await redis.lPush(QUEUE_NAME, JSON.stringify(metadata));
+    await redis.lpush(QUEUE_NAME, JSON.stringify(metadata));
     console.log("File metadata uploaded to Redis:", metadata);
     return true;
   } catch (error) {
@@ -74,58 +80,59 @@ async function UploadToRedis(
 export async function processFile(
   file: File
 ): Promise<{ status: string; message: string }> { 
+  let chatId: string | undefined;
+  let key: string | undefined;
   try {
-    rate_limit_action_function();
-      const data = await getServerSession(authOptions);
-    console.log(data?.user);
+    await rate_limit_action_function();
+
+    if (!file) throw new Error("No file provided");
+    if(file.type.toLowerCase()!== "application/pdf") throw new Error("Only PDF files are allowed");
+
+    const data = await getServerSession(authOptions);
     if (!data?.user?.userId) {
       throw new Error("User ID not found in session");
     }
+
     const response=await IsProcessing(data.user.userId);
     if(response){
       return { status:"error", message:"Already Processing a file"}
     }
-    if (!file) {
-      console.error("No file provided");
-      return { status: "error", message: "No file provided" };
-    }
-    const userId = await checkLimit();
+    await checkLimit(data.user.userId);
+
     const nameParts = file.name.split('.');
     const topic= await CreateTopic(file.name);
+    const arrayBuffer = await file.arrayBuffer();
+
     const chat= await prisma.chat.create({
       data: {
         status: "WAITING",
-        topic:topic? topic: nameParts[0],type: "PDF",userId,
+        topic:topic? topic: nameParts[0],type: "PDF",userId:data.user.userId,
       },
     })
-    const extension = nameParts[nameParts.length-1] || 'bin';
-    const key = `${uuidv4()}.${extension}`;
+    chatId = chat.id;
 
-    const arrayBuffer = await file.arrayBuffer();
-    
-
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'pdf') {
+      throw new Error('Only PDF extension is allowed');
+    }
+    key = `${uuidv4()}.${extension}`;
     const nodeBuffer = Buffer.from(arrayBuffer);
    
 
-    const s3Path = await UploadToS3(nodeBuffer, key, file.type || `application/${extension}`);
-    if (!s3Path) {
-      throw new Error("Failed to upload file to S3");
-    }
+    await UploadToS3(nodeBuffer, key, file.type || `application/${extension}`);
+   
 
-    console.log("File uploaded to S3:", s3Path);
 
     const fileMetadata : FileMetadata = {
       name: nameParts[0],
-      path: s3Path,
       type: "PDF",
       key,
-      chatId: chat.id,
+      chatId,
     };
 
     const redisResult = await UploadToRedis(fileMetadata);
     if (!redisResult) {
-      console.error("Redis upload failed");
-      return { status: "error", message: "Failed to queue metadata in Redis" };
+      throw new RedisError("Failed to queue file metadata in Redis");
     }
 
     console.log("File metadata uploaded to Redis");
@@ -134,51 +141,77 @@ export async function processFile(
       status: "success",
       message: "File processed successfully",
     };
-
   } catch (error:any) {
-    console.error("Unexpected error processing file:", error);
-    if(error.name!="LimitExceededError"){
+    if(error instanceof LimitExceededError){
+      return {
+        status: "error",
+        message: error.name,
+      }
+    }
+    if( error instanceof S3Error || error instanceof RedisError) {
+      if (error instanceof RedisError){
+        if (key){
+          try {
+            await DeleteFromS3(key);
+          } catch (error2) {
+            if (error2 instanceof S3Error) {
+              console.error("Error deleting file from S3:", error2.message);
+            }
+          }
+        } 
+      }
       await increaseLimit();
+      if (chatId) {
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { status: "FAILED" },
+        });
+      }
     }
     return {
       status: "error",
-      message: error.name,
+      message: "There was an error processing the file: Try again later" ,
     };
   }
 }
+
 async function ensureBucketExists(s3: S3Client, bucketName: string) {
   try {
-    await s3.send(new HeadBucketCommand({ Bucket: bucketName }));
+    const headBucketCommand = new HeadBucketCommand({ Bucket: bucketName });
+    await s3.send(headBucketCommand);
     console.log(`Bucket ${bucketName} already exists`);
   } catch (err: any) {
+    console.log(err)
     if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
       console.log(`Bucket ${bucketName} not found. Creating...`);
       await s3.send(new CreateBucketCommand({ Bucket: bucketName }));
       console.log(`Bucket ${bucketName} created`);
     } else {
-      console.error('Error checking bucket:', err);
       throw err;
     }
   }
 }
+
 export async function processUrl(
   url: string
 ): Promise<{ status: string; message: string }> {
+  let chatId: string | undefined;
   try {
     rate_limit_action_function();
+    if (!url) {
+      throw new Error("No URL provided");
+    }
     const data = await getServerSession(authOptions);
     if (!data?.user?.userId) {
       throw new Error("User ID not found in session");
     }
+
     const response=await IsProcessing(data.user.userId);
     if(response){
       return { status:"error", message:"Already Processing a file"}
     }
-    if (!url) {
-      console.error("No URL provided");
-      return { status: "error", message: "No URL provided" };
-    }
-    const userId= await checkLimit();
+    await checkLimit(data.user.userId);
+    
     const uri= new URL(url);
     const hostname= uri.hostname.split(".");
     hostname.pop();
@@ -190,7 +223,7 @@ export async function processUrl(
       await prisma.chat.create({
       data: {
         status: "COMPLETED",collectionName,
-        topic:topic ? topic : final,type: "URL",userId,
+        topic:topic ? topic : final,type: "URL",userId:data.user.userId,
       },
     })
      return {
@@ -203,18 +236,18 @@ export async function processUrl(
     const chat= await prisma.chat.create({
       data: {
         status: "WAITING",
-        topic: topic ? topic : final,type: "URL",userId,
+        topic: topic ? topic : final,type: "URL",userId: data.user.userId,
       },
     })
+    chatId = chat.id;
    const metadata : URLMetadata = {
          url,
         type: "URL",
-        chatId: chat.id,
+        chatId,
         };
         
     const redisResult = await UploadToRedis(metadata);
     if (!redisResult) {
-      console.error("Redis upload failed");
       throw new Error("Failed to queue URL metadata in Redis");
     }
     console.log("URL metadata uploaded to Redis");
@@ -225,15 +258,28 @@ export async function processUrl(
     }
     catch (error:any) {
     console.error("Unexpected error processing URL:", error);
-     if(error.name!="LimitExceededError"){
+     if(error instanceof LimitExceededError){
+      return {
+        status: "error",
+        message: error.name,
+      }
+    }
+    if(error instanceof RedisError) {
       await increaseLimit();
+      if (chatId) {
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { status: "FAILED" },
+        });
+      }
     }
     return {
       status: "error",
-      message: error.name,
+      message: " There was an error processing the URL: Try again later" ,
     };
     }   
 }
+
 async function checkIfURLExsists(url: string) {
   try {
     const urlCreate=await prisma.uRL.findFirst({
@@ -244,7 +290,6 @@ async function checkIfURLExsists(url: string) {
           }
         });
     if (urlCreate) {
-      console.error("URL already exists in the database");
       return {
         status: true,
         message: "URL already exists in the database",
@@ -261,32 +306,28 @@ async function checkIfURLExsists(url: string) {
     throw new Error("Error checking URL existence in the database: " + error);
   }
 }
-async function checkLimit() {
-  try {
-    const data = await getServerSession(authOptions);
-    console.log(data?.user);
-    if (!data?.user?.email) {
-      throw new Error("User email not found in session");
-    }
-    const email= data.user.email;
 
+
+async function checkLimit(userId: string) {
+  try {
     const user= await prisma.user.findUnique({
-      where: { email },
+      where: { 
+        id : userId
+       },
       select:{
         limit: true,
         id: true,
       }
     });
     if (!user) {
-    console.error("User not found in database");
     throw new Error("User not found in database");
   }
   if (user.limit && user.limit <= 0) {
-    console.error("User has reached their limit");
-    throw new Error("User has reached their limit");
+        throw new LimitExceededError();
   }
     await prisma.user.update({
-      where: { email },
+      where: {         id : userId
+ },
       data: {
         limit: {
           decrement: 1,
@@ -297,7 +338,11 @@ async function checkLimit() {
     return user.id;
   } catch (error) {
     console.error("Error checking user limit:", error);
-    throw new LimitExceededError();
+    if (error instanceof LimitExceededError) {
+      throw error;
+    } else {
+      throw new Error("Error checking user limit: " + error);
+    }
   }
 }
 
@@ -335,5 +380,28 @@ async function increaseLimit() {
     return user.id;
   } catch (error) {
     console.error("Error checking user limit:", error);
+  }
+}
+
+
+async function DeleteFromS3(key: string) {
+    try {
+  const s3 = new S3Client({
+    region:  process.env.S3_REGION || "ap-south-1",
+    credentials: {
+      accessKeyId:  process.env.S3_ACCESS_KEY_ID || "test",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY  || "test", 
+    },
+    forcePathStyle: true
+  });
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: key
+    });
+    await s3.send(deleteCommand);
+    console.log(`PDF with key ${key} deleted from S3 successfully`);
+  } catch (error) {
+    console.error(`Error deleting PDF with key ${key} from S3:`, error);
+     throw new S3Error(`Error deleting PDF from S3: ${error}`);
   }
 }

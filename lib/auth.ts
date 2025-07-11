@@ -1,7 +1,7 @@
 import GoogleProvider from "next-auth/providers/google"
 import { prisma } from "@/lib/prisma" 
 import { DefaultSession, SessionStrategy } from "next-auth"
-import { signin_rate_limit } from "./rate-limit";
+import { signin_rate_limit } from "./redis";
 import { headers } from "next/headers";
 declare module "next-auth" {
   interface Session {

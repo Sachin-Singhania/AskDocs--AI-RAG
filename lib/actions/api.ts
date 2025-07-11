@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { $Enums } from "../generated/prisma";
 import { prisma } from "../prisma";
-import { ratelimit } from "../rate-limit";
+import { ratelimit } from "../redis";
 import { UPLOADMESSAGE } from "../types";
 
 
