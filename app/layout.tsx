@@ -3,9 +3,8 @@ import './globals.css'
 import AuthProvider from './provider'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.dev',
+  title: 'AskDocs AI',
+  description: 'Communicate With PDF or Docs URL easily with our platform',
 }
 
 export default function RootLayout({
