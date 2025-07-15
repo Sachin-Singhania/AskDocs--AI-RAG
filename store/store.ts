@@ -15,7 +15,7 @@ type Message = {
   Sender: Sender
 }
 
-type Chat = {
+export type Chat = {
   id: string
   topic: string
   collectionName: string | null

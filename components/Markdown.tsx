@@ -7,11 +7,11 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 export default function MarkdownViewer({ content }: { content: string }) {
   return (
-    <div className="prose prose-lg max-w-none dark:prose-invert prose-pre:my-2 prose-p:my-2 prose-code:my-0 ">
+    <div className="prose dark:prose-invert max-w-none">
       <ReactMarkdown
         components={{
-          code({inline, className, children, ...props}: {inline?: boolean, className?: string, children?: React.ReactNode, [key: string]: any}) {
-            const match = /language-(\w+)/.exec(className || '')
+          code({ inline, className, children, ...props }:{inline?: boolean, className?: string, children?: React.ReactNode, [key: string]: any}) {
+            const match = /language-(\w+)/.exec(className || '');
             return !inline && match ? (
               <SyntaxHighlighter
                 style={oneDark}
@@ -25,8 +25,8 @@ export default function MarkdownViewer({ content }: { content: string }) {
               <code className={className} {...props}>
                 {children}
               </code>
-            )
-          }
+            );
+          },
         }}
       >
         {content}
@@ -34,3 +34,4 @@ export default function MarkdownViewer({ content }: { content: string }) {
     </div>
   )
 }
+
