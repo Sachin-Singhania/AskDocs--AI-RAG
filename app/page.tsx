@@ -6,7 +6,7 @@ import { DocumentProcessor } from "@/components/document-processor"
 import { useSession } from "next-auth/react";
 import { useChatStore } from "@/store/store"
 import { getChats } from "@/lib/actions/api"
-
+import { Toaster } from "@/components/ui/sonner"
 export default function Page() {
   const [documentType, setDocumentType] = useState<"pdf" | "url" | null>(null)
   const {data:session,status} = useSession();

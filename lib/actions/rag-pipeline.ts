@@ -41,9 +41,9 @@ async function getQueries(query: string): Promise<Array<string>> {
      Generated queries :- '{"queries": ["node js http server code example", "building basic server in Node tutorial", "node js http server codes"]}'
     `
         const model = ai.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-pro",
             generationConfig: {
-                temperature: 1.5,
+                temperature: 0.7,
                 responseMimeType: "application/json",
             },
             systemInstruction: {
@@ -168,9 +168,9 @@ export async function ask(query: string, collectionName: string, messages: MESSA
         const system_prompt= systemPrompt(promptParts);
 
         const model = ai.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-pro",
             generationConfig: {
-                temperature: 1.5,
+                temperature: 0.7,
             },
             systemInstruction: {
                 role: "system",
@@ -204,9 +204,9 @@ export async function CreateTopic(URLorPDFname: string) {
          YOU:- '{"topic":"Learning Nodejs"}'
         `;
         const model = ai.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-pro",
             generationConfig: {
-                temperature: 1.5,
+                temperature: 0.7,
                 responseMimeType: "application/json",
             }, systemInstruction: {
                 role: "system",
@@ -244,9 +244,9 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
             ${chats.map((m, i) => `(${i + 1}) [${m.role}] ${m.content}`).join('\n')}
             `
          const model = ai.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-pro",
             generationConfig: {
-                temperature: 1.5,
+                temperature: 0.7,
             },
         });
         const { response } = await model.generateContent({
@@ -289,9 +289,9 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
            You : We talked about IDS and IPS earlier then user provided with questions and my analysis user understood 1st question which was Intrusion detection system uses so here are the remaning question 2) advantage of ips over ids 3) difference between ids and ips
            `
          const model = ai.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-pro",
             generationConfig: {
-                temperature: 1.5,
+                temperature: 0.7,
             },
             systemInstruction: {
                     role: "system",

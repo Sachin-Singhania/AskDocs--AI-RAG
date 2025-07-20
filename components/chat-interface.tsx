@@ -140,7 +140,7 @@ export  function ChatMessage({ message } :{ message: Chat['messages'][number] })
         <div
           className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${
             message.Sender === "USER"
-              ? "bg-gradient-to-br from-blue-600 to-blue-700 ml-4 shadow-blue-200/30"
+              ? "bg-gradient-to-br  from-blue-600 to-blue-700 ml-4 shadow-blue-200/30 "
               : "bg-gradient-to-br from-slate-600 to-slate-700 mr-4 shadow-slate-200/30"
           }`}
         >
@@ -153,7 +153,10 @@ export  function ChatMessage({ message } :{ message: Chat['messages'][number] })
               : "bg-white/80 border border-white/20 text-slate-800 shadow-slate-200/20"
           }`}
         >
-          <MarkdownViewer content={cleanChatMessage(message.content)} />
+          {
+            message.Sender=="ASSISTANT" ? <MarkdownViewer content={cleanChatMessage(message.content)} /> : message.content
+          }
+          
           {message.Sender === "ASSISTANT" && (
             <div className="mt-3 pt-3 border-t border-slate-200/50">
               <div className="flex items-center space-x-2">
