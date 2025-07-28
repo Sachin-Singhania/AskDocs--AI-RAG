@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import AuthProvider from './provider'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'AskDocs AI',
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body>  
       <AuthProvider >
+        <Toaster position='top-right'richColors={true}/>
         {children}
       </AuthProvider>
       </body>

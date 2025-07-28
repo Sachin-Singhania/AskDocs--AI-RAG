@@ -5,17 +5,17 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Send, Bot, User, FileText, Sparkles } from "lucide-react"
 import { Chat, useChatStore } from "@/store/store"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { uploadMessage } from "@/lib/actions/api"
 import { ask } from "@/lib/actions/rag-pipeline"
 import { ROLE, UPLOADMESSAGE } from "@/lib/types"
 import MarkdownViewer from "./Markdown"
+import { toast } from "sonner"
 
 
 export function ChatInterface() {
    const {addMessages,activeChatId,chats} = useChatStore();
   const [loading, setLoading] = useState(false);
-  const [rendered, setrendered] = useState(false);
   const [chat, setchat] = useState<Chat>()
   useEffect(() => {
     if (activeChatId == null) return;
@@ -55,17 +55,18 @@ export function ChatInterface() {
           chat.type,
           chat.id
         );
-        if(ai!=""){
+        if(ai.message!="" && ai.status){
            const msg:UPLOADMESSAGE= {
           chatId:activeChatId,
-          message:ai,
+          message:ai.message,
           role :  ROLE.ASSISTANT
         }
         const response= await uploadMessage(msg);
          if(response)addMessages(activeChatId,response);
         }
       } catch (error) {
-        
+        //@ts-ignore
+          toast.error(error.message);
       } finally{
         setLoading(false);
       }
@@ -98,6 +99,7 @@ export  function ChatHeader({ topic } :{ topic: string | undefined }) {
   );
 }
 export  function ChatMessages({ messages, loading } :{ messages: Chat['messages'] | undefined, loading: boolean }) {
+
   if (!messages?.length && !loading) {
     return (
       <div className="flex-1 overflow-y-auto p-6 no-scrollbar flex items-center justify-center">
@@ -135,7 +137,7 @@ export  function ChatMessage({ message } :{ message: Chat['messages'][number] })
     .trim();
 }
   return (
-    <div className={`flex ${message.Sender === "USER" ? "justify-end" : "justify-start"}`}>
+    <div key={message.id} className={`flex ${message.Sender === "USER" ? "justify-end" : "justify-start"}`}>
       <div className={`flex max-w-4xl ${message.Sender === "USER" ? "flex-row-reverse" : "flex-row"}`}>
         <div
           className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${
@@ -154,7 +156,7 @@ export  function ChatMessage({ message } :{ message: Chat['messages'][number] })
           }`}
         >
           {
-            message.Sender=="ASSISTANT" ? <MarkdownViewer content={cleanChatMessage(message.content)} /> : message.content
+            message.Sender=="ASSISTANT" ? <MarkdownViewer key={message.id} content={cleanChatMessage(message.content)} /> : message.content
           }
           
           {message.Sender === "ASSISTANT" && (

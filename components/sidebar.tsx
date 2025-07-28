@@ -1,8 +1,7 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/store/store"
-import {  FileText, Globe, MessageSquare, RotateCcw, Sparkles, Trash2 } from "lucide-react"
+import { FileText, Globe, MessageSquare, Sparkles } from "lucide-react"
 import { Card } from "./ui/card"
 
 interface SidebarProps {
@@ -104,6 +103,7 @@ export function Sidebar({ documentType, setDocumentType }: SidebarProps) {
 export function ChatHistory() {
    const { chats, selectChat, activeChatId } = useChatStore();
   let chatHistory = Object.values(chats);
+
   return (
     <div className="flex-1 mt-8">
       {/* Header */}
@@ -148,15 +148,6 @@ export function ChatHistory() {
         )}
       </div>
 
-      {/* View All Button */}
-      {chatHistory.length > 0 && (
-        <Button
-          variant="ghost"
-          className="w-full mt-3 text-xs text-slate-600 hover:text-slate-800 hover:bg-white/50 transition-colors"
-        >
-          View All Conversations ({chatHistory.length})
-        </Button>
-      )}
     </div>
   )
 }

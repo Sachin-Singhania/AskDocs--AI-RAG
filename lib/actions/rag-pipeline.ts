@@ -41,7 +41,7 @@ async function getQueries(query: string): Promise<Array<string>> {
      Generated queries :- '{"queries": ["node js http server code example", "building basic server in Node tutorial", "node js http server codes"]}'
     `
         const model = ai.getGenerativeModel({
-            model: "gemini-1.5-pro",
+            model: "gemini-1.5-flash",
             generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",
@@ -129,11 +129,17 @@ export async function ask(query: string, collectionName: string, messages: MESSA
         let SummarizeMsg: MESSAGESSENTTOAI_WITHSUMMARY | null = null;
         if(messages.length>5){
              let messageFromApi= await SummarizeChat(messages,chatId);
-     let lastThreeMessages = messages.slice(-3);
-     SummarizeMsg = {
-         ChatSummary: messageFromApi ?? "",
-         messages: lastThreeMessages
-     };
+             let lastThreeMessages = messages.slice(-3);
+             if(messageFromApi.status) {
+                 SummarizeMsg = {
+                     ChatSummary: messageFromApi.message ?? "",
+                       messages: lastThreeMessages
+               }
+                }else{
+                    SummarizeMsg = {
+                        messages : lastThreeMessages
+                    }
+                }
         }
         if (queries.length > 0 && queries.length <= 3) {
                 for (const q of queries) {
@@ -168,7 +174,7 @@ export async function ask(query: string, collectionName: string, messages: MESSA
         const system_prompt= systemPrompt(promptParts);
 
         const model = ai.getGenerativeModel({
-            model: "gemini-1.5-pro",
+            model: "gemini-2.5-pro",
             generationConfig: {
                 temperature: 0.7,
             },
@@ -182,8 +188,12 @@ export async function ask(query: string, collectionName: string, messages: MESSA
         });
         const final = response.text().trim();
         console.log(final);
-        return final;
+        return {
+            message : final,
+            status : true
+        };
     } catch (error: any) {
+        console.error(error);
         throw new GEMINI_ERROR("THERE WAS SOME ERROR WHILE PROCESSING MESSAGE")
     }
 }
@@ -204,7 +214,7 @@ export async function CreateTopic(URLorPDFname: string) {
          YOU:- '{"topic":"Learning Nodejs"}'
         `;
         const model = ai.getGenerativeModel({
-            model: "gemini-1.5-pro",
+            model: "gemini-1.5-flash",
             generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",
@@ -226,9 +236,7 @@ export async function CreateTopic(URLorPDFname: string) {
 
 async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
     try {
-        if(messages.length<6) return;
         const length=messages.length;
-
         const local_storage= localStorage.getItem('Summarized-Chat') ?? "{}";
         const PreviousSummarizedChat:{
             [key:string]: string
@@ -253,7 +261,10 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
             contents: [{ role: "user", parts: [{ text: query }] }],
         });
         const final = response.text().trim();
-        return final;
+        return {
+            status : true,
+            message : final
+        };
         }
 
 
@@ -289,7 +300,7 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
            You : We talked about IDS and IPS earlier then user provided with questions and my analysis user understood 1st question which was Intrusion detection system uses so here are the remaning question 2) advantage of ips over ids 3) difference between ids and ips
            `
          const model = ai.getGenerativeModel({
-            model: "gemini-1.5-pro",
+            model: "gemini-2.5-pro",
             generationConfig: {
                 temperature: 0.7,
             },
@@ -302,9 +313,15 @@ async function SummarizeChat(messages:MESSAGESSENTTOAI[],chatId:string) {
             contents: [{ role: "user", parts: [{ text: message }] }],
         });
         const final = response.text().trim();
-        return final;
+        return {
+            status : true,
+            message : final
+        };
     } catch (error) {
-        return;
+        return {
+            status: false,
+            message : "Error occurred"
+        }
     }
     
 }

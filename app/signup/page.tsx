@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Sparkles, ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { Sparkles } from "lucide-react"
 import { signIn } from "next-auth/react"
+import { useState } from "react"
 
 export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)

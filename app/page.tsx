@@ -6,13 +6,18 @@ import { DocumentProcessor } from "@/components/document-processor"
 import { useSession } from "next-auth/react";
 import { useChatStore } from "@/store/store"
 import { getChats } from "@/lib/actions/api"
-import { Toaster } from "@/components/ui/sonner"
+import { toast } from "sonner"
+
 export default function Page() {
   const [documentType, setDocumentType] = useState<"pdf" | "url" | null>(null)
   const {data:session,status} = useSession();
-    const { activeChatId,setChats,chats } = useChatStore();
+    const { activeChatId,setChats } = useChatStore();
   useEffect(() => {
-      if (status !== "authenticated" || !session?.user?.userId) return;
+    if(status=="loading" )return;
+      if (status !== "authenticated" || !session?.user?.userId) {
+        toast.error("You are not logged in");
+        return;
+      };
       let isCanceled = false;
       let id: NodeJS.Timeout | null = null;
       async function chat(userId: string) {
@@ -30,7 +35,8 @@ export default function Page() {
         pollInterval= 10000;
       }
     } catch (error) {
-      console.log(error);
+      console.error(error);
+      toast.error("An Error Occurred while fetching message");
       pollInterval = 15000;
     }
     if (!isCanceled) {

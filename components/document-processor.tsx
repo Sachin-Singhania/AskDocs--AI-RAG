@@ -10,6 +10,7 @@ import { Upload, Globe, Loader2, Sparkles, FileText, Link } from "lucide-react"
 import { processFile, processUrl } from "@/lib/actions/file"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface DocumentProcessorProps {
   documentType: "pdf" | "url" | null
@@ -34,6 +35,7 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   }
   const handleProcessClick = async () => {
     if (status !== "authenticated" || !session?.user || !session?.user?.userId) {
+      toast.success("Signin To Use our service")
         nav.push("/signup");
         return;
     }
@@ -41,14 +43,24 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   try {
     if (documentType === "pdf" && file) {
       const res = await processFile(file);
-      console.log("File processing result:", res);
+      if(res.status=="error"){
+        toast.error(res.message);
+      }else{
+        toast.success(res.message);
+      }
     } 
     else if (documentType === "url" && url) {
       const res = await processUrl(url);
       console.log("URL processing result:", res);
+     if(res.status=="error"){
+        toast.error(res.message);
+      }else{
+        toast.success(res.message);
+      }
     }
   } catch (error) {
     console.error("Error processing document:", error);
+    toast.error("Error processing document");
   } finally {
     setIsProcessing(false);
   }
