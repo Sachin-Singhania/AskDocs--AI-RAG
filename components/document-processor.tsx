@@ -45,6 +45,7 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
       const res = await processFile(file);
       if(res.status=="error"){
         toast.error(res.message);
+        nav.push("/signup")
       }else{
         toast.success(res.message);
       }
@@ -52,8 +53,9 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
     else if (documentType === "url" && url) {
       const res = await processUrl(url);
       console.log("URL processing result:", res);
-     if(res.status=="error"){
+      if(res.status=="error"){
         toast.error(res.message);
+        nav.push("/signup")
       }else{
         toast.success(res.message);
       }

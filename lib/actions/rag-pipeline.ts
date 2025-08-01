@@ -3,10 +3,10 @@ import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { MESSAGESSENTTOAI, MESSAGESSENTTOAI_WITHSUMMARY } from "../types";
-import { TYPE } from "../generated/prisma";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { rate_limit_action_function } from "./api";
 import { systemPrompt } from "../systemprompt";
+import { TYPE } from "@prisma/client";
 
 
 class GEMINI_ERROR extends Error{

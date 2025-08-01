@@ -1,10 +1,10 @@
 "use server"
 
 import { headers } from "next/headers";
-import { $Enums } from "../generated/prisma";
 import { prisma } from "../prisma";
 import { ratelimit } from "../redis";
 import { UPLOADMESSAGE } from "../types";
+import { $Enums } from "@prisma/client";
 
 
 export async function rate_limit_action_function() {

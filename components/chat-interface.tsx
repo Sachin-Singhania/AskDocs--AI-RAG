@@ -99,7 +99,10 @@ export  function ChatHeader({ topic } :{ topic: string | undefined }) {
   );
 }
 export  function ChatMessages({ messages, loading } :{ messages: Chat['messages'] | undefined, loading: boolean }) {
-
+  const scroll= useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scroll.current?.scrollIntoView({behavior : 'smooth',block:"end",inline:"nearest"});
+  },[messages])
   if (!messages?.length && !loading) {
     return (
       <div className="flex-1 overflow-y-auto p-6 no-scrollbar flex items-center justify-center">
@@ -125,6 +128,7 @@ export  function ChatMessages({ messages, loading } :{ messages: Chat['messages'
       {messages?.map((message) => (
         <ChatMessage key={message.id} message={message} />
       ))}
+      <div ref={scroll}/>
       {loading && <LoadingBubble />}
     </div>
   );
