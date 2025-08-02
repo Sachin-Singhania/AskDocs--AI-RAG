@@ -54,8 +54,14 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
       const res = await processUrl(url);
       console.log("URL processing result:", res);
       if(res.status=="error"){
-        toast.error(res.message);
-        nav.push("/signup")
+        if(res.message=="User not found in database"){
+          toast.error(res.message);
+          nav.push("/signup")
+        }
+        if(res.message=="LimitExceededError"){
+          toast.error("Your limit has been exceeded");
+        }
+
       }else{
         toast.success(res.message);
       }

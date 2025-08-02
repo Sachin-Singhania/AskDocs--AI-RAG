@@ -1,4 +1,4 @@
-import { $Enums, Sender } from '@/lib/generated/prisma'
+import { $Enums, Sender } from '@prisma/client'
 import { create } from 'zustand'
 
 type ChatStore = {
