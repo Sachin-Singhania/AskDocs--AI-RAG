@@ -93,10 +93,10 @@ export async function processFile(
       throw new Error("User ID not found in session");
     }
 
-    const response=await IsProcessing(data.user.userId);
-    if(response){
-      return { status:"error", message:"Already Processing a file"}
-    }
+    // const response=await IsProcessing(data.user.userId);
+    // if(response){
+    //   return { status:"error", message:"Already Processing a file"}
+    // }
     await checkLimit(data.user.userId);
 
     const nameParts = file.name.split('.');
@@ -160,7 +160,6 @@ export async function processFile(
           }
         } 
       }
-      await increaseLimit();
       if (chatId) {
         await prisma.chat.update({
           where: { id: chatId },
@@ -206,10 +205,10 @@ export async function processUrl(
       throw new Error("User ID not found in session");
     }
 
-    const response=await IsProcessing(data.user.userId);
-    if(response){
-      return { status:"error", message:"Already Processing a file"}
-    }
+    // const response=await IsProcessing(data.user.userId);
+    // if(response){
+    //   return { status:"error", message:"Already Processing a file"}
+    // }
     await checkLimit(data.user.userId);
     
     const uri= new URL(url);
@@ -220,12 +219,23 @@ export async function processUrl(
     const topic= await CreateTopic(uri.origin);
     if (status) {
       console.log(message);
-      await prisma.chat.create({
-      data: {
-        status: "COMPLETED",collectionName,
-        topic:topic ? topic : final,type: "URL",userId:data.user.userId,
-      },
-    })
+       await prisma.$transaction(async (tx) => {
+         await tx.chat.create({
+         data: {
+           status: "COMPLETED",collectionName,
+           topic:topic ? topic : final,type: "URL",userId:data.user.userId,
+         },
+       })
+         await tx.user.update({
+         where: {         id : data.user.userId
+             },
+         data: {
+           limit: {
+             decrement: 1,
+           },
+         },
+       });
+       })
      return {
       status: "success",
       message: "URL processed successfully",
@@ -265,7 +275,6 @@ export async function processUrl(
       }
     }
     if(error instanceof RedisError) {
-      await increaseLimit();
       if (chatId) {
         await prisma.chat.update({
           where: { id: chatId },
@@ -325,16 +334,7 @@ async function checkLimit(userId: string) {
   if (user.limit && user.limit <= 0) {
         throw new LimitExceededError();
   }
-    await prisma.user.update({
-      where: {         id : userId
- },
-      data: {
-        limit: {
-          decrement: 1,
-        },
-      },
-    });
-    console.log("User limit decremented successfully");
+
     return user.id;
   } catch (error) {
     console.error("Error checking user limit:", error);
@@ -348,40 +348,40 @@ async function checkLimit(userId: string) {
 
 
 
-async function increaseLimit() {
-    try {
-    const data = await getServerSession(authOptions);
-    console.log(data?.user);
-    if (!data?.user?.email) {
-      throw new Error("User email not found in session");
-    }
-    const email= data.user.email;
+// async function increaseLimit() {
+//     try {
+//     const data = await getServerSession(authOptions);
+//     console.log(data?.user);
+//     if (!data?.user?.email) {
+//       throw new Error("User email not found in session");
+//     }
+//     const email= data.user.email;
 
-    const user= await prisma.user.findUnique({
-      where: { email },
-      select:{
-        limit: true,
-        id: true,
-      }
-    });
-    if (!user) {
-    console.error("User not found in database");
-    throw new Error("User not found in database");
-  }
-    await prisma.user.update({
-      where: { email },
-      data: {
-        limit: {
-          increment: 1,
-        },
-      },
-    });
-    console.log("User limit Incremented successfully");
-    return user.id;
-  } catch (error) {
-    console.error("Error checking user limit:", error);
-  }
-}
+//     const user= await prisma.user.findUnique({
+//       where: { email },
+//       select:{
+//         limit: true,
+//         id: true,
+//       }
+//     });
+//     if (!user) {
+//     console.error("User not found in database");
+//     throw new Error("User not found in database");
+//   }
+//     await prisma.user.update({
+//       where: { email },
+//       data: {
+//         limit: {
+//           increment: 1,
+//         },
+//       },
+//     });
+//     console.log("User limit Incremented successfully");
+//     return user.id;
+//   } catch (error) {
+//     console.error("Error checking user limit:", error);
+//   }
+// }
 
 
 async function DeleteFromS3(key: string) {
