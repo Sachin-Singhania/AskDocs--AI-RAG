@@ -43,9 +43,13 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   try {
     if (documentType === "pdf" && file) {
       const res = await processFile(file);
+       if(res.message=="User not found in database"){
+          toast.error(res.message);
+          nav.push("/signup")
+          return;
+        }
       if(res.status=="error"){
         toast.error(res.message);
-        nav.push("/signup")
       }else{
         toast.success(res.message);
       }

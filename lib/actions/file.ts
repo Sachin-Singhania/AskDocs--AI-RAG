@@ -100,7 +100,12 @@ export async function processFile(
     await checkLimit(data.user.userId);
 
     const nameParts = file.name.split('.');
-    const topic= await CreateTopic(file.name);
+    let topic;
+    try {
+      topic= await CreateTopic(file.name);
+    } catch (error) {
+      console.log("Error Getting Topic Name");
+    }
     const arrayBuffer = await file.arrayBuffer();
 
     const chat= await prisma.chat.create({

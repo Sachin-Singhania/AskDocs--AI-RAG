@@ -104,6 +104,7 @@ async function getSourcesFromQueries(queries: string, collectionName: string,typ
         .filter((content, index, self) => self.indexOf(content) === index)
         .slice(0, 3);
     }
+    console.log(pageContents)
        return {
       sources,
       pageContents,
@@ -141,6 +142,13 @@ export async function ask(query: string, collectionName: string, messages: MESSA
                     }
                 }
         }
+        const { pageContents:data_p,sources:data_s, error } = await getSourcesFromQueries(query,collectionName,type);
+        if (error) {
+            errorMessage = error;
+        }else{
+            sources.push(...data_s);
+            context.push(...data_p);
+        }
         if (queries.length > 0 && queries.length <= 3) {
                 for (const q of queries) {
                 const { pageContents:data_p,sources:data_s, error } = await getSourcesFromQueries(q, collectionName, type);
@@ -151,6 +159,7 @@ export async function ask(query: string, collectionName: string, messages: MESSA
                 sources.push(...data_s);
                 context.push(...data_p);
                 }
+                //original query 
 
                 sources = sources.filter((url, index, self) => self.indexOf(url) === index).slice(0, 3);
                 context = context.filter((contenxt,index,self)=> self.indexOf(contenxt)===index).slice(0,3);
@@ -161,7 +170,6 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             }if (sources && sources.length > 0) {
                 promptParts.push(`- SOURCES: ${JSON.stringify(sources)}`);
             }
-            console.log(context);
             if (errorMessage) {
                 promptParts.push(`- ERROR: ${errorMessage}`);
              }
@@ -187,7 +195,6 @@ export async function ask(query: string, collectionName: string, messages: MESSA
             contents: [{ role: "user", parts: [{ text: query }] }],
         });
         const final = response.text().trim();
-        console.log(final);
         return {
             message : final,
             status : true
@@ -230,6 +237,7 @@ export async function CreateTopic(URLorPDFname: string) {
         const json = JSON.parse(final);
         return json.topic;
     } catch (error) {
+        console.log(error)
         throw new GEMINI_ERROR("THERE WAS SOME ERROR WHILE CALLING GEMINI");
     }
 }
