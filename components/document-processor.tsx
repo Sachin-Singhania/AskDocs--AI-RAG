@@ -11,10 +11,9 @@ import { processFile, processUrl } from "@/lib/actions/file"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { isValidUrl } from "@/lib/utils"
+import { DocumentProcessorProps } from "@/lib/types"
 
-interface DocumentProcessorProps {
-  documentType: "pdf" | "url" | null
-}
 
 export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -55,6 +54,12 @@ export function DocumentProcessor({ documentType }: DocumentProcessorProps) {
       }
     } 
     else if (documentType === "url" && url) {
+    
+      if (!isValidUrl(url)) {
+        toast.error("Please enter a valid URL");
+        setIsProcessing(false);
+        return;
+      }
       const res = await processUrl(url);
       console.log("URL processing result:", res);
       if(res.status=="error"){

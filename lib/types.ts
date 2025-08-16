@@ -18,3 +18,10 @@ export interface MESSAGESSENTTOAI_WITHSUMMARY {
   messages: MESSAGESSENTTOAI[];
     ChatSummary?: string;
 }
+export interface SidebarProps {
+  documentType: "pdf" | "url" | null
+  setDocumentType: (type: "pdf" | "url" | null) => void
+}
+export interface DocumentProcessorProps {
+  documentType: "pdf" | "url" | null
+}
